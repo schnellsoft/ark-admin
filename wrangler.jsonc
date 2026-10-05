@@ -1,0 +1,30 @@
+/**
+ * Wrangler companion config for local D1 migrations and typegen.
+ * Runtime bindings are declared in cloudflare.config.ts (vinext/cf).
+ */
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ark-admin",
+  "compatibility_date": "2026-10-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "./worker/index.ts",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ark-admin-db",
+      "database_id": "local-ark-admin-db",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "ark-admin-media" },
+    { "binding": "CONTENT", "bucket_name": "ark-admin-content" }
+  ],
+  "images": { "binding": "IMAGES" },
+  "durable_objects": {
+    "bindings": [{ "name": "CHAT", "class_name": "ChatRoom" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] }
+  ]
+}
