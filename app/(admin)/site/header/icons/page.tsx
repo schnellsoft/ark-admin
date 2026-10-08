@@ -1,26 +1,30 @@
-import { SiteSectionEditor } from "@/components/site-section-editor";
-import { getDraft } from "@/lib/content";
+import { HeaderIconsManager } from "@/components/header-icons-manager";
+import { getHeaderIconSettings, listHeaderIcons } from "@/lib/header-icons";
+import { listIcons } from "@/lib/icons";
 
 export default async function HeaderIconsPage() {
-  const draft = (await getDraft<{ facebook: string; instagram: string; phone: string }>(
-    "header-icons",
-  )) ?? {
-    facebook: "",
-    instagram: "",
-    phone: "",
-  };
+  const [icons, settings, libraryIcons] = await Promise.all([
+    listHeaderIcons(),
+    getHeaderIconSettings(),
+    listIcons(),
+  ]);
 
   return (
-    <SiteSectionEditor
-      title="Header · Icons"
-      description="Social and contact icons shown in the site header."
-      draftKey="header-icons"
-      initial={draft}
-      fields={[
-        { name: "facebook", label: "Facebook URL", placeholder: "https://", raw: true },
-        { name: "instagram", label: "Instagram URL", placeholder: "https://", raw: true },
-        { name: "phone", label: "Phone link", placeholder: "tel:+40...", raw: true },
-      ]}
-    />
+    <div className="space-y-4">
+      <div>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">
+          Header · Icons
+        </h1>
+        <p className="text-slate-400">
+          Header icon strip settings and entries. Persisted to dbsite and{" "}
+          <code className="text-teal-300/90">ark-admin-content/header/icons/header_icons.json</code>.
+        </p>
+      </div>
+      <HeaderIconsManager
+        initialIcons={icons}
+        initialSettings={settings}
+        libraryIcons={libraryIcons}
+      />
+    </div>
   );
 }
