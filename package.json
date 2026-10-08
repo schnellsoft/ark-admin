@@ -53,8 +53,8 @@
     "start": "vite preview",
     "deploy": "vinext-cloudflare deploy",
     "cf-typegen": "cf workers types",
-    "db:migrate:local": "wrangler d1 migrations apply ark-admin-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply ark-admin-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply ark-admin-db --local && wrangler d1 migrations apply ark-admin-db-site --local",
+    "db:migrate:remote": "wrangler d1 migrations apply ark-admin-db --remote && wrangler d1 migrations apply ark-admin-db-site --remote",
     "types": "wrangler types && cf workers types"
   }
 }

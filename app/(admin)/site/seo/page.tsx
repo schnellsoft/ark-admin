@@ -18,8 +18,8 @@ export default async function SeoPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-950">SEO</h1>
-        <p className="text-slate-600">Search and social metadata published with the site content pack.</p>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">SEO</h1>
+        <p className="text-slate-400">Search and social metadata published with the site content pack.</p>
       </div>
       <SeoForm initial={seo} />
     </div>

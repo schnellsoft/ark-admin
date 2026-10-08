@@ -8,8 +8,8 @@ export default async function MediaPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-950">Media</h1>
-        <p className="text-slate-600">Upload images and videos to R2 for the clinic site.</p>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">Media</h1>
+        <p className="text-slate-400">Upload images and videos to R2 for the clinic site.</p>
       </div>
       <MediaUploader />
       <Card>
@@ -20,7 +20,7 @@ export default async function MediaPage() {
           <ul className="space-y-2 text-sm">
             {files.length === 0 ? <li className="text-slate-500">No media yet.</li> : null}
             {files.map((file) => (
-              <li key={file.key} className="flex justify-between gap-3 rounded-md bg-slate-50 px-3 py-2">
+              <li key={file.key} className="flex justify-between gap-3 rounded-md bg-slate-900/60 px-3 py-2">
                 <span className="truncate font-mono text-xs">{file.key}</span>
                 <span className="text-xs text-slate-500">{file.size} B</span>
               </li>

@@ -12,8 +12,14 @@
     {
       "binding": "DB",
       "database_name": "ark-admin-db",
-      "database_id": "local-ark-admin-db",
+      "database_id": "27df8aba-99fe-4516-bf07-12bc0f9acae6",
       "migrations_dir": "migrations"
+    },
+    {
+      "binding": "SITE_DB",
+      "database_name": "ark-admin-db-site",
+      "database_id": "d6db6b40-cc69-4577-9534-49eb306164e6",
+      "migrations_dir": "migrations-site"
     }
   ],
   "r2_buckets": [

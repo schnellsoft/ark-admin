@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { CloudUpload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/components/i18n-provider";
 
 export function SaveToCloudButton() {
+  const { t } = useI18n();
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -27,9 +29,9 @@ export function SaveToCloudButton() {
     <div className="flex items-center gap-2">
       <Button onClick={onPublish} disabled={pending}>
         <CloudUpload className="h-4 w-4" />
-        {pending ? "Saving…" : "Save to cloud"}
+        {pending ? t("grid.saving") : t("app.saveToCloud")}
       </Button>
-      {status ? <span className="max-w-[180px] truncate text-xs text-slate-600">{status}</span> : null}
+      {status ? <span className="max-w-[180px] truncate text-xs text-slate-400">{status}</span> : null}
     </div>
   );
 }

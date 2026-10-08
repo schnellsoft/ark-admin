@@ -10,8 +10,8 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
-    const { DB } = getEnv();
-    await DB.prepare(
+    const { SITE_DB } = getEnv();
+    await SITE_DB.prepare(
       `UPDATE tickets
        SET status = ?, assignee_id = COALESCE(?, assignee_id), updated_at = datetime('now')
        WHERE id = ?`,

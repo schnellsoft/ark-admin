@@ -118,7 +118,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         <Button type="button" onClick={save}>
           Save settings
         </Button>
-        <span className="text-sm text-slate-600">{status}</span>
+        <span className="text-sm text-slate-400">{status}</span>
       </div>
     </div>
   );

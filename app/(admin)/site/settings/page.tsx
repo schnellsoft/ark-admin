@@ -17,8 +17,8 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-950">Settings</h1>
-        <p className="text-slate-600">AI API keys, email delivery, and locale defaults.</p>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">Settings</h1>
+        <p className="text-slate-400">AI API keys, email delivery, and locale defaults.</p>
       </div>
       <SettingsForm
         initial={{

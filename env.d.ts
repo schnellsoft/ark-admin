@@ -7,6 +7,7 @@ interface ImagesBinding {
 
 interface Env {
   DB: D1Database;
+  SITE_DB: D1Database;
   MEDIA: R2Bucket;
   CONTENT: R2Bucket;
   CHAT: DurableObjectNamespace;

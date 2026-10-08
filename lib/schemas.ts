@@ -37,10 +37,18 @@ export const ticketStatusSchema = z.object({
   assigneeId: z.string().uuid().nullable().optional(),
 });
 
+export const localeMapSchema = z.object({
+  ro: z.string(),
+  bg: z.string(),
+  en: z.string(),
+});
+
+const i18nTextSchema = z.union([z.string().max(20000), localeMapSchema]);
+
 export const slideSchema = z.object({
   id: z.string(),
-  title: z.string().min(1).max(200),
-  html: z.string().max(20000),
+  title: i18nTextSchema,
+  html: i18nTextSchema,
   mediaKey: z.string().nullable(),
   mediaType: z.enum(["image", "video"]).default("image"),
   order: z.number().int().nonnegative(),
@@ -103,4 +111,59 @@ export const pushSubscribeSchema = z.object({
   }),
 });
 
-export const draftKeySchema = z.enum(["slideshow", "home", "seo"]);
+export const sectionFieldsSchema = z.record(z.string(), z.string());
+
+const positionedRow = z.object({
+  id: z.string().min(1),
+  position: z.number().int().positive(),
+});
+
+export const menuItemsSchema = z.object({
+  items: z.array(
+    positionedRow.extend({
+      label: i18nTextSchema,
+      href: z.string().min(1).max(500),
+    }),
+  ),
+});
+
+export const servicesItemsSchema = z.object({
+  items: z.array(
+    positionedRow.extend({
+      title: i18nTextSchema,
+      html: i18nTextSchema,
+    }),
+  ),
+});
+
+export const stuffItemsSchema = z.object({
+  items: z.array(
+    positionedRow.extend({
+      name: i18nTextSchema,
+      role: i18nTextSchema,
+      bio: i18nTextSchema,
+    }),
+  ),
+});
+
+export const articlesItemsSchema = z.object({
+  items: z.array(
+    positionedRow.extend({
+      slug: z.string().min(1).max(120),
+      title: i18nTextSchema,
+      html: i18nTextSchema,
+    }),
+  ),
+});
+
+export const draftKeySchema = z.enum([
+  "slideshow",
+  "home",
+  "seo",
+  "header-logo",
+  "header-icons",
+  "header-menu",
+  "services",
+  "stuff",
+  "articles",
+]);

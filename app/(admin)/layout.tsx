@@ -7,8 +7,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { DB } = getEnv();
-  const unread = await DB.prepare(
+  const { SITE_DB } = getEnv();
+  const unread = await SITE_DB.prepare(
     `SELECT COUNT(*) as c FROM messages WHERE read_at IS NULL AND type IN ('contact', 'chat', 'ticket')`,
   ).first<{ c: number }>();
 

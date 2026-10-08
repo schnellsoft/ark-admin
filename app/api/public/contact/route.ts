@@ -10,9 +10,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { DB } = getEnv();
+  const { SITE_DB } = getEnv();
   const id = crypto.randomUUID();
-  await DB.prepare(
+  await SITE_DB.prepare(
     `INSERT INTO messages (id, type, from_name, from_email, body, meta_json)
      VALUES (?, 'contact', ?, ?, ?, ?)`,
   )

@@ -7,7 +7,8 @@ Next.js 16-style admin PWA for a dental clinic static site, running on **Cloudfl
 - vinext + Vite + Cloudflare Workers (`cf` / Wrangler)
 - Tailwind CSS + shadcn-style UI + sortable/filterable data grids
 - Zod validation
-- D1 (drafts, users, messages, tickets)
+- D1 `DB` (`ark-admin-db`) — **users + sessions only** (admin auth)
+- D1 `SITE_DB` (`ark-admin-db-site`) — site content, messages, tickets, settings (Astro + R2 publish source). Databases do not join/communicate.
 - R2 (media + published JSON packs)
 - Durable Objects (WebSocket chat)
 - Web Push + app badge + PWA install

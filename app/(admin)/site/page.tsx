@@ -3,32 +3,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getDraft } from "@/lib/content";
 import { getEnv } from "@/lib/env";
 
+const sections = [
+  { href: "/site/header/logo", title: "Header · Logo", desc: "Clinic logo assets" },
+  { href: "/site/header/icons", title: "Header · Icons", desc: "Social and utility icons" },
+  { href: "/site/header/menu", title: "Header · Menu", desc: "Navigation links" },
+  { href: "/site/slideshow", title: "Slideshow", desc: "UIkit slideshow slides" },
+  { href: "/site/services", title: "Services", desc: "Clinic services list" },
+  { href: "/site/stuff", title: "Stuff", desc: "Staff / misc content" },
+  { href: "/site/articles", title: "Articles", desc: "Blog and news articles" },
+];
+
 export default async function SiteOverviewPage() {
   const slideshow = await getDraft<{ slides: unknown[] }>("slideshow");
-  const { DB } = getEnv();
-  const lastPublish = await DB.prepare(
+  const { SITE_DB } = getEnv();
+  const lastPublish = await SITE_DB.prepare(
     `SELECT version, created_at FROM publish_log ORDER BY created_at DESC LIMIT 1`,
   ).first<{ version: string; created_at: string }>();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-950">Site</h1>
-        <p className="mt-1 text-slate-600">
+        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">Site</h1>
+        <p className="mt-1 text-slate-400">
           Edit clinic content drafts in D1, then publish JSON packs to R2 with Save to cloud.
         </p>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Slideshow</CardTitle>
-            <CardDescription>UIkit-compatible slides</CardDescription>
+            <CardDescription>Active slides</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold">{slideshow?.slides?.length ?? 0}</p>
-            <Link className="mt-3 inline-block text-sm text-teal-700 underline" href="/site/slideshow">
-              Edit slideshow
-            </Link>
+            <p className="text-2xl font-semibold text-teal-200">{slideshow?.slides?.length ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
@@ -41,17 +48,19 @@ export default async function SiteOverviewPage() {
             <p className="mt-1 text-xs text-slate-500">{lastPublish?.created_at ?? "—"}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick links</CardTitle>
-            <CardDescription>Common admin tasks</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 text-sm text-teal-800">
-            <Link href="/site/media">Media library</Link>
-            <Link href="/site/seo">SEO settings</Link>
-            <Link href="/site/settings">AI & email keys</Link>
-          </CardContent>
-        </Card>
+        {sections.map((s) => (
+          <Card key={s.href}>
+            <CardHeader>
+              <CardTitle>{s.title}</CardTitle>
+              <CardDescription>{s.desc}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link className="text-sm text-teal-300 underline" href={s.href}>
+                Open
+              </Link>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </div>
   );

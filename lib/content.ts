@@ -1,8 +1,8 @@
 import { getEnv } from "./env";
 
 export async function getDraft<T>(key: string): Promise<T | null> {
-  const { DB } = getEnv();
-  const row = await DB.prepare("SELECT payload_json FROM content_drafts WHERE key = ?")
+  const { SITE_DB } = getEnv();
+  const row = await SITE_DB.prepare("SELECT payload_json FROM content_drafts WHERE key = ?")
     .bind(key)
     .first<{ payload_json: string }>();
   if (!row) return null;
@@ -10,8 +10,8 @@ export async function getDraft<T>(key: string): Promise<T | null> {
 }
 
 export async function saveDraft(key: string, payload: unknown, userId?: string) {
-  const { DB } = getEnv();
-  await DB.prepare(
+  const { SITE_DB } = getEnv();
+  await SITE_DB.prepare(
     `INSERT INTO content_drafts (key, payload_json, updated_by, updated_at)
      VALUES (?, ?, ?, datetime('now'))
      ON CONFLICT(key) DO UPDATE SET
@@ -24,8 +24,8 @@ export async function saveDraft(key: string, payload: unknown, userId?: string) 
 }
 
 export async function getSetting<T>(key: string): Promise<T | null> {
-  const { DB } = getEnv();
-  const row = await DB.prepare("SELECT value_json FROM site_settings WHERE key = ?")
+  const { SITE_DB } = getEnv();
+  const row = await SITE_DB.prepare("SELECT value_json FROM site_settings WHERE key = ?")
     .bind(key)
     .first<{ value_json: string }>();
   if (!row) return null;
@@ -33,8 +33,8 @@ export async function getSetting<T>(key: string): Promise<T | null> {
 }
 
 export async function saveSetting(key: string, value: unknown) {
-  const { DB } = getEnv();
-  await DB.prepare(
+  const { SITE_DB } = getEnv();
+  await SITE_DB.prepare(
     `INSERT INTO site_settings (key, value_json, updated_at)
      VALUES (?, ?, datetime('now'))
      ON CONFLICT(key) DO UPDATE SET
@@ -46,8 +46,9 @@ export async function saveSetting(key: string, value: unknown) {
 }
 
 export async function publishToCloud(userId?: string) {
-  const { DB, CONTENT } = getEnv();
-  const drafts = await DB.prepare("SELECT key, payload_json FROM content_drafts").all<{
+  const { SITE_DB, CONTENT } = getEnv();
+  const { listIcons, syncIconsJson } = await import("./icons");
+  const drafts = await SITE_DB.prepare("SELECT key, payload_json FROM content_drafts").all<{
     key: string;
     payload_json: string;
   }>();
@@ -64,7 +65,25 @@ export async function publishToCloud(userId?: string) {
     });
   }
 
-  const settings = await DB.prepare("SELECT key, value_json FROM site_settings").all<{
+  const icons = await listIcons();
+  await syncIconsJson(icons);
+  const iconsPayload = JSON.stringify(
+    {
+      icons: icons.map((i) => ({
+        id: i.id,
+        name: i.name,
+        svg: i.svg,
+        position: i.position,
+      })),
+    },
+    null,
+    2,
+  );
+  await CONTENT.put(`${prefix}/icons.json`, iconsPayload, {
+    httpMetadata: { contentType: "application/json" },
+  });
+
+  const settings = await SITE_DB.prepare("SELECT key, value_json FROM site_settings").all<{
     key: string;
     value_json: string;
   }>();
@@ -72,7 +91,6 @@ export async function publishToCloud(userId?: string) {
   for (const row of settings.results ?? []) {
     settingsMap[row.key] = JSON.parse(row.value_json);
   }
-  // Strip secrets from public settings pack
   if (settingsMap.ai && typeof settingsMap.ai === "object") {
     settingsMap.ai = { ...(settingsMap.ai as object), apiKey: undefined };
   }
@@ -87,7 +105,7 @@ export async function publishToCloud(userId?: string) {
   });
 
   const id = crypto.randomUUID();
-  await DB.prepare(
+  await SITE_DB.prepare(
     `INSERT INTO publish_log (id, version, r2_prefix, created_by) VALUES (?, ?, ?, ?)`,
   )
     .bind(id, version, prefix, userId ?? null)
@@ -107,7 +125,11 @@ export async function listMedia(prefix = "media/") {
   }));
 }
 
-export async function putMedia(key: string, body: ArrayBuffer | ReadableStream | string, contentType: string) {
+export async function putMedia(
+  key: string,
+  body: ArrayBuffer | ReadableStream | string,
+  contentType: string,
+) {
   const { MEDIA } = getEnv();
   await MEDIA.put(key, body, { httpMetadata: { contentType } });
   return key;

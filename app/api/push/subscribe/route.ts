@@ -11,8 +11,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
 
-    const { DB } = getEnv();
-    await DB.prepare(
+    const { SITE_DB } = getEnv();
+    await SITE_DB.prepare(
       `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(endpoint) DO UPDATE SET

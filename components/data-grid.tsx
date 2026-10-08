@@ -69,7 +69,7 @@ export function DataGrid<T>({
         placeholder={filterPlaceholder}
         className="max-w-sm"
       />
-      <div className="rounded-xl border border-slate-200">
+      <div className="rounded-xl border border-slate-700">
         <Table>
           <TableHeader>
             <TableRow>

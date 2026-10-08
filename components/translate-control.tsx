@@ -37,7 +37,7 @@ export function TranslateControl({
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Languages className="h-4 w-4 text-teal-800" />
         <Input

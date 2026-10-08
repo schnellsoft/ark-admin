@@ -9,8 +9,8 @@ export async function POST(
   try {
     await requireUser();
     const { id } = await context.params;
-    const { DB } = getEnv();
-    await DB.prepare(`UPDATE messages SET read_at = datetime('now') WHERE id = ?`)
+    const { SITE_DB } = getEnv();
+    await SITE_DB.prepare(`UPDATE messages SET read_at = datetime('now') WHERE id = ?`)
       .bind(id)
       .run();
     return NextResponse.json({ ok: true });

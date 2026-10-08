@@ -9,3 +9,7 @@ export function getEnv(): AppEnv {
 export async function db() {
   return getEnv().DB;
 }
+
+export async function siteDb() {
+  return getEnv().SITE_DB;
+}

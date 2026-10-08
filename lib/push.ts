@@ -6,15 +6,22 @@ export async function getVapidPublicKey() {
   return VAPID_PUBLIC_KEY || "";
 }
 
-export async function sendPushToUser(userId: string, payload: { title: string; body: string; url?: string }) {
-  const { DB, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = getEnv();
+export async function sendPushToUser(
+  userId: string,
+  payload: { title: string; body: string; url?: string },
+) {
+  const { SITE_DB, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = getEnv();
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     return { sent: 0, reason: "missing_vapid" as const };
   }
 
-  webpush.setVapidDetails(VAPID_SUBJECT || "mailto:admin@ark.local", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  webpush.setVapidDetails(
+    VAPID_SUBJECT || "mailto:admin@ark.local",
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY,
+  );
 
-  const rows = await DB.prepare(
+  const rows = await SITE_DB.prepare(
     `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?`,
   )
     .bind(userId)
@@ -34,7 +41,7 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
     } catch (error) {
       const status = (error as { statusCode?: number }).statusCode;
       if (status === 404 || status === 410) {
-        await DB.prepare("DELETE FROM push_subscriptions WHERE id = ?").bind(sub.id).run();
+        await SITE_DB.prepare("DELETE FROM push_subscriptions WHERE id = ?").bind(sub.id).run();
       }
     }
   }

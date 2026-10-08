@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useI18n } from "@/components/i18n-provider";
 
 export function LiveAlerts({ unreadCount }: { unreadCount: number }) {
+  const { t } = useI18n();
   const [count, setCount] = useState(unreadCount);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -56,7 +58,9 @@ export function LiveAlerts({ unreadCount }: { unreadCount: number }) {
         />
       </audio>
       <Bell className="h-4 w-4 text-teal-800" />
-      <Badge>{count} unread</Badge>
+      <Badge>
+        {count} {t("app.unread")}
+      </Badge>
     </div>
   );
 }

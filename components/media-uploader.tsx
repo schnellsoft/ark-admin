@@ -20,13 +20,13 @@ export function MediaUploader() {
   }
 
   return (
-    <form onSubmit={onUpload} className="space-y-3 rounded-xl border border-slate-200 p-4">
+    <form onSubmit={onUpload} className="space-y-3 rounded-xl border border-slate-700 p-4">
       <div className="space-y-2">
         <Label htmlFor="file">File</Label>
         <Input id="file" name="file" type="file" accept="image/*,video/*" required />
       </div>
       <Button type="submit">Upload to R2</Button>
-      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+      {status ? <p className="text-sm text-slate-400">{status}</p> : null}
     </form>
   );
 }

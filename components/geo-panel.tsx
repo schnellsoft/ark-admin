@@ -109,7 +109,7 @@ export function GeoPanel({ initial }: { initial: GeoRow[] }) {
       <Button type="button" onClick={capture}>
         Share my location
       </Button>
-      {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+      {status ? <p className="text-sm text-slate-400">{status}</p> : null}
       <DataGrid
         data={rows}
         columns={columns}

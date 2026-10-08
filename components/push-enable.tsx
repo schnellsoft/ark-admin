@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/components/i18n-provider";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -11,6 +12,7 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export function PushEnable() {
+  const { t } = useI18n();
   const [status, setStatus] = useState<string>("");
 
   async function enable() {
@@ -44,7 +46,7 @@ export function PushEnable() {
 
   return (
     <Button type="button" variant="outline" onClick={enable}>
-      {status || "Enable push"}
+      {status || t("app.enablePush")}
     </Button>
   );
 }

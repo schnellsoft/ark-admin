@@ -9,16 +9,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { DB } = getEnv();
+  const { SITE_DB } = getEnv();
   const id = crypto.randomUUID();
-  await DB.prepare(
+  await SITE_DB.prepare(
     `INSERT INTO tickets (id, subject, status, from_name, from_email, body)
      VALUES (?, ?, 'open', ?, ?, ?)`,
   )
     .bind(id, parsed.data.subject, parsed.data.fromName, parsed.data.fromEmail, parsed.data.body)
     .run();
 
-  await DB.prepare(
+  await SITE_DB.prepare(
     `INSERT INTO messages (id, type, from_name, from_email, body, meta_json)
      VALUES (?, 'ticket', ?, ?, ?, ?)`,
   )

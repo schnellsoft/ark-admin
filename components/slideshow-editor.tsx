@@ -3,23 +3,43 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { TranslateControl } from "@/components/translate-control";
+import { MultilingualTextEditor } from "@/components/multilingual-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { emptyLocaleMap, type LocaleMap } from "@/lib/i18n";
 
 type Slide = {
   id: string;
-  title: string;
-  html: string;
+  title: LocaleMap;
+  html: LocaleMap;
   mediaKey: string | null;
   mediaType: "image" | "video";
   order: number;
 };
 
-export function SlideshowEditor({ initial }: { initial: { slides: Slide[] } }) {
+function asLocaleMap(value: unknown): LocaleMap {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const v = value as Partial<LocaleMap>;
+    return { ro: v.ro ?? "", bg: v.bg ?? "", en: v.en ?? "" };
+  }
+  if (typeof value === "string") return emptyLocaleMap(value);
+  return emptyLocaleMap();
+}
+
+function normalizeSlides(slides: Array<Record<string, unknown>>): Slide[] {
+  return slides.map((s, order) => ({
+    id: String(s.id ?? crypto.randomUUID()),
+    title: asLocaleMap(s.title),
+    html: asLocaleMap(s.html),
+    mediaKey: (s.mediaKey as string | null) ?? null,
+    mediaType: (s.mediaType as "image" | "video") ?? "image",
+    order: typeof s.order === "number" ? s.order : order,
+  }));
+}
+
+export function SlideshowEditor({ initial }: { initial: { slides: Array<Record<string, unknown>> } }) {
   const [slides, setSlides] = useState<Slide[]>(
-    [...initial.slides].sort((a, b) => a.order - b.order),
+    normalizeSlides(initial.slides ?? []).sort((a, b) => a.order - b.order),
   );
   const [status, setStatus] = useState("");
   const [activeId, setActiveId] = useState(slides[0]?.id ?? "");
@@ -34,8 +54,8 @@ export function SlideshowEditor({ initial }: { initial: { slides: Slide[] } }) {
   function addSlide() {
     const slide: Slide = {
       id: crypto.randomUUID(),
-      title: "New slide",
-      html: "<p></p>",
+      title: emptyLocaleMap("New slide"),
+      html: emptyLocaleMap("<p></p>"),
       mediaKey: null,
       mediaType: "image",
       order: slides.length,
@@ -69,11 +89,11 @@ export function SlideshowEditor({ initial }: { initial: { slides: Slide[] } }) {
               key={slide.id}
               type="button"
               className={`block w-full rounded-md px-3 py-2 text-left text-sm ${
-                slide.id === active?.id ? "bg-teal-700 text-white" : "bg-slate-100"
+                slide.id === active?.id ? "bg-teal-700 text-white" : "bg-slate-800"
               }`}
               onClick={() => setActiveId(slide.id)}
             >
-              {slide.title}
+              {slide.title.ro || slide.title.en || slide.id}
             </button>
           ))}
           <Button type="button" variant="outline" className="w-full" onClick={addSlide}>
@@ -84,26 +104,17 @@ export function SlideshowEditor({ initial }: { initial: { slides: Slide[] } }) {
 
       {active ? (
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Title</Label>
-            <Input value={active.title} onChange={(e) => updateActive({ title: e.target.value })} />
-            <TranslateControl
-              value={active.title}
-              onApply={(translated) => updateActive({ title: translated })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>HTML caption</Label>
-            <Textarea
-              className="min-h-40 font-mono text-xs"
-              value={active.html}
-              onChange={(e) => updateActive({ html: e.target.value })}
-            />
-            <TranslateControl
-              value={active.html.replace(/<[^>]+>/g, " ")}
-              onApply={(translated) => updateActive({ html: `<p>${translated}</p>` })}
-            />
-          </div>
+          <MultilingualTextEditor
+            label="Title"
+            value={active.title}
+            onChange={(title) => updateActive({ title })}
+          />
+          <MultilingualTextEditor
+            label="HTML caption"
+            multiline
+            value={active.html}
+            onChange={(html) => updateActive({ html })}
+          />
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Media key (R2)</Label>
@@ -116,7 +127,7 @@ export function SlideshowEditor({ initial }: { initial: { slides: Slide[] } }) {
             <div className="space-y-2">
               <Label>Media type</Label>
               <select
-                className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="flex h-10 w-full rounded-md border border-slate-600 bg-slate-900/80 px-3 text-sm"
                 value={active.mediaType}
                 onChange={(e) => updateActive({ mediaType: e.target.value as "image" | "video" })}
               >
@@ -129,7 +140,7 @@ export function SlideshowEditor({ initial }: { initial: { slides: Slide[] } }) {
             <Button type="button" onClick={save}>
               Save draft
             </Button>
-            <span className="text-sm text-slate-600">{status}</span>
+            <span className="text-sm text-slate-400">{status}</span>
           </div>
         </div>
       ) : null}

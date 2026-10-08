@@ -59,7 +59,7 @@ export class ChatRoom extends DurableObject<Env> {
     };
 
     if (payload.body.trim()) {
-      await this.env.DB.prepare(
+      await this.env.SITE_DB.prepare(
         `INSERT INTO messages (id, type, from_user_id, from_name, body, created_at)
          VALUES (?, 'chat', ?, ?, ?, datetime('now'))`,
       )

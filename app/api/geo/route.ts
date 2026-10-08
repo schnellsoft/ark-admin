@@ -12,11 +12,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
 
-    const { DB } = getEnv();
+    const { DB, SITE_DB } = getEnv();
     const id = crypto.randomUUID();
     const userId = parsed.data.userId ?? user?.id ?? null;
 
-    await DB.prepare(
+    await SITE_DB.prepare(
       `INSERT INTO geo_events (id, user_id, lat, lng, label) VALUES (?, ?, ?, ?, ?)`,
     )
       .bind(id, userId, parsed.data.lat, parsed.data.lng, parsed.data.label ?? null)

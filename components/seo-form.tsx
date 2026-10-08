@@ -75,7 +75,7 @@ export function SeoForm({ initial }: { initial: Seo }) {
         <Button type="button" onClick={save}>
           Save draft
         </Button>
-        <span className="text-sm text-slate-600">{status}</span>
+        <span className="text-sm text-slate-400">{status}</span>
       </div>
     </div>
   );

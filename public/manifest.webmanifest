@@ -4,8 +4,8 @@
   "description": "Admin PWA for the Ark dental clinic static site",
   "start_url": "/site",
   "display": "standalone",
-  "background_color": "#f4f7fb",
-  "theme_color": "#0f766e",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
   "icons": [
     {
       "src": "/icons/icon-192.png",
