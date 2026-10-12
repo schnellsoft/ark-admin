@@ -1,33 +1,34 @@
-import { listMedia } from "@/lib/content";
-import { MediaUploader } from "@/components/media-uploader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LibraryManager } from "@/components/library-manager";
+import {
+  getLibrarySettings,
+  listLibraryCategories,
+  listLibraryImages,
+} from "@/lib/library";
 
-export default async function MediaPage() {
-  const files = await listMedia();
+export default async function MediaLibraryPage() {
+  const [images, categories, settings] = await Promise.all([
+    listLibraryImages(),
+    listLibraryCategories(),
+    getLibrarySettings(),
+  ]);
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">Media</h1>
-        <p className="text-slate-400">Upload images and videos to R2 for the clinic site.</p>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">
+          Media · Library
+        </h1>
+        <p className="text-slate-400">
+          Upload and manage images. Persisted to dbsite,{" "}
+          <code className="text-teal-300/90">ark-admin-media/library/</code>, and{" "}
+          <code className="text-teal-300/90">ark-admin-content/library/library.json</code>.
+        </p>
       </div>
-      <MediaUploader />
-      <Card>
-        <CardHeader>
-          <CardTitle>Library</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2 text-sm">
-            {files.length === 0 ? <li className="text-slate-500">No media yet.</li> : null}
-            {files.map((file) => (
-              <li key={file.key} className="flex justify-between gap-3 rounded-md bg-slate-900/60 px-3 py-2">
-                <span className="truncate font-mono text-xs">{file.key}</span>
-                <span className="text-xs text-slate-500">{file.size} B</span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      <LibraryManager
+        initialImages={images}
+        initialCategories={categories}
+        initialSettings={settings}
+      />
     </div>
   );
 }

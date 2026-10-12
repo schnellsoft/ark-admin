@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,11 +28,15 @@ export function MultilingualTextEditor({
   multiline?: boolean;
   rows?: number;
 }) {
-  const { t } = useI18n();
-  const [editLocale, setEditLocale] = useState<Locale>("ro");
+  const { t, locale } = useI18n();
+  const [editLocale, setEditLocale] = useState<Locale>(locale);
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
   const map = value ?? emptyLocaleMap();
+
+  useEffect(() => {
+    setEditLocale(locale);
+  }, [locale]);
 
   async function translateOthers() {
     const source = map[editLocale]?.trim();

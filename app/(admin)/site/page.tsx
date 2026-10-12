@@ -11,6 +11,9 @@ const sections = [
   { href: "/site/services", title: "Services", desc: "Clinic services list" },
   { href: "/site/stuff", title: "Stuff", desc: "Staff / misc content" },
   { href: "/site/articles", title: "Articles", desc: "Blog and news articles" },
+  { href: "/site/media", title: "Media · Library", desc: "Image library with categories" },
+  { href: "/site/media/categories", title: "Media · Categories", desc: "Library image categories" },
+  { href: "/site/media/settings", title: "Media · Settings", desc: "Resize and WebP defaults" },
 ];
 
 export default async function SiteOverviewPage() {

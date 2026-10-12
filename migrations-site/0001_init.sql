@@ -72,6 +72,6 @@ INSERT OR IGNORE INTO content_drafts (key, payload_json) VALUES
   ('seo', '{"title":"Ark Dental Clinic","description":"Family dental care","ogImage":"","robots":"index,follow","canonical":"","jsonLd":"{}"}');
 
 INSERT OR IGNORE INTO site_settings (key, value_json) VALUES
-  ('ai', '{"endpoint":"https://api.openai.com/v1","model":"gpt-4o-mini","apiKey":""}'),
+  ('ai', '{"endpoint":"https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID","model":"@cf/meta/m2m100-1.2b","apiKey":""}'),
   ('email', '{"to":"admin@ark.local","from":"noreply@ark.local","resendApiKey":""}'),
   ('locale', '{"default":"en","supported":["en","ro"]}');

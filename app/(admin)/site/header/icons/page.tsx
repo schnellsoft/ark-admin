@@ -1,8 +1,13 @@
 import { HeaderIconsManager } from "@/components/header-icons-manager";
-import { getHeaderIconSettings, listHeaderIcons } from "@/lib/header-icons";
+import {
+  ensureHeaderIconLabelsI18n,
+  getHeaderIconSettings,
+  listHeaderIcons,
+} from "@/lib/header-icons";
 import { listIcons } from "@/lib/icons";
 
 export default async function HeaderIconsPage() {
+  await ensureHeaderIconLabelsI18n();
   const [icons, settings, libraryIcons] = await Promise.all([
     listHeaderIcons(),
     getHeaderIconSettings(),

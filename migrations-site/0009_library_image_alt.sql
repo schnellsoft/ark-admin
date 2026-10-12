@@ -1,0 +1,1 @@
+ALTER TABLE library_images ADD COLUMN alt TEXT NOT NULL DEFAULT '';

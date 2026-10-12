@@ -35,11 +35,19 @@ export function SettingsForm({ initial }: { initial: Settings }) {
           <TabsTrigger value="locale">Locale</TabsTrigger>
         </TabsList>
         <TabsContent value="ai" className="space-y-3">
+          <p className="text-sm text-slate-400">
+            Defaults to Cloudflare Workers AI translation (
+            <code className="text-teal-300/90">@cf/meta/m2m100-1.2b</code>). Replace{" "}
+            <code className="text-teal-300/90">ACCOUNT_ID</code> and use a Cloudflare API token
+            with Workers AI permissions. Endpoint should be the account root (not{" "}
+            <code className="text-teal-300/90">/ai/v1</code>).
+          </p>
           <div className="space-y-2">
             <Label>Endpoint</Label>
             <Input
               value={form.ai.endpoint}
               onChange={(e) => setForm({ ...form, ai: { ...form.ai, endpoint: e.target.value } })}
+              placeholder="https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID"
             />
           </div>
           <div className="space-y-2">
@@ -47,6 +55,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
             <Input
               value={form.ai.model}
               onChange={(e) => setForm({ ...form, ai: { ...form.ai, model: e.target.value } })}
+              placeholder="@cf/meta/m2m100-1.2b"
             />
           </div>
           <div className="space-y-2">
@@ -55,6 +64,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
               type="password"
               value={form.ai.apiKey}
               onChange={(e) => setForm({ ...form, ai: { ...form.ai, apiKey: e.target.value } })}
+              placeholder="Cloudflare API token"
             />
           </div>
         </TabsContent>

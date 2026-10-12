@@ -1,19 +1,25 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
+  asHeaderIconLabel,
   getHeaderIconSettings,
   listHeaderIcons,
   saveHeaderIconSettings,
   saveHeaderIconsBulk,
   type HeaderIconRow,
 } from "@/lib/header-icons";
+import { localeMapSchema } from "@/lib/schemas";
 import { z } from "zod";
 
 const iconSchema = z.object({
   id: z.string().uuid(),
   icon_id: z.string().uuid().nullable().optional(),
   name: z.string().max(120).default(""),
-  label: z.string().max(200).default(""),
+  label: z.union([localeMapSchema, z.string().max(200)]).default({
+    ro: "",
+    bg: "",
+    en: "",
+  }),
   description: z.string().max(1000).default(""),
   aria_label: z.string().max(200).default(""),
   link: z.string().max(2000).default("#"),
@@ -30,6 +36,8 @@ const bulkSchema = z.object({
 const settingsSchema = z.object({
   more: z.boolean(),
   maxWidth: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  color: z.string().max(32).default(""),
+  colorHover: z.string().max(32).default(""),
 });
 
 export async function GET() {
@@ -53,7 +61,13 @@ export async function PUT(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
-    const icons = await saveHeaderIconsBulk(parsed.data.icons as HeaderIconRow[]);
+    const icons = await saveHeaderIconsBulk(
+      parsed.data.icons.map((icon) => ({
+        ...icon,
+        icon_id: icon.icon_id ?? null,
+        label: asHeaderIconLabel(icon.label),
+      })) as HeaderIconRow[],
+    );
     return NextResponse.json({ icons });
   } catch (error) {
     return NextResponse.json(
@@ -73,6 +87,8 @@ export async function PATCH(request: Request) {
     const settings = await saveHeaderIconSettings({
       more: parsed.data.more,
       maxWidth: parsed.data.maxWidth,
+      color: parsed.data.color,
+      colorHover: parsed.data.colorHover,
     });
     return NextResponse.json({ settings });
   } catch (error) {

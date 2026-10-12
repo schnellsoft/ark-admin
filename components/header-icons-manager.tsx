@@ -2,59 +2,23 @@
 
 import { useId, useMemo, useState } from "react";
 import { SndGrid, type SndColumn } from "@/components/snd-grid";
+import { HexColorField } from "@/components/hex-color-field";
+import { HeaderStripSettingsForm } from "@/components/header-strip-settings-form";
 import { IconPickerPanel } from "@/components/icon-picker-panel";
+import { MultilingualTextEditor } from "@/components/multilingual-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/components/i18n-provider";
+import { emptyLocaleMap } from "@/lib/i18n";
 import {
+  asHeaderIconLabel,
+  headerIconLabelText,
   validateHeaderIconDraft,
   type HeaderIconRow,
   type HeaderIconSettings,
 } from "@/lib/header-icons-shared";
 import type { IconRow } from "@/lib/icons";
-
-function HexColorField({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const pickerValue = /^#([0-9a-fA-F]{6})$/.test(value) ? value : "#000000";
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-2">
-        <Input
-          id={id}
-          type="color"
-          className="h-10 w-14 cursor-pointer p-1"
-          value={pickerValue}
-          aria-label={label}
-          onChange={(e) => onChange(e.target.value.toUpperCase())}
-        />
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="#1877F2"
-          spellCheck={false}
-          autoCorrect="off"
-          autoCapitalize="off"
-          className="font-mono uppercase"
-          aria-describedby={`${id}-hint`}
-        />
-      </div>
-      <p id={`${id}-hint`} className="text-xs text-slate-500">
-        Hex
-      </p>
-    </div>
-  );
-}
 
 function HeaderIconFormFields({
   draft,
@@ -108,12 +72,11 @@ function HeaderIconFormFields({
       </fieldset>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label htmlFor="hi-label">{t("field.label")}</Label>
-          <Input
-            id="hi-label"
-            value={draft.label ?? ""}
-            onChange={(e) => setDraft({ ...draft, label: e.target.value })}
+        <div className="sm:col-span-2">
+          <MultilingualTextEditor
+            label={t("field.label")}
+            value={asHeaderIconLabel(draft.label)}
+            onChange={(label) => setDraft({ ...draft, label })}
           />
         </div>
         <div className="space-y-1">
@@ -173,101 +136,6 @@ function HeaderIconFormFields({
   );
 }
 
-function SettingsForm({
-  initial,
-}: {
-  initial: HeaderIconSettings;
-}) {
-  const { t } = useI18n();
-  const [more, setMore] = useState(initial.more);
-  const [maxWidth, setMaxWidth] = useState(initial.maxWidth);
-  const [status, setStatus] = useState("");
-  const [pending, setPending] = useState(false);
-  const moreId = useId();
-  const widthId = useId();
-  const statusId = useId();
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setPending(true);
-    setStatus(t("headerIcons.saving"));
-    try {
-      const res = await fetch("/api/site/header/icons", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ more, maxWidth }),
-      });
-      const data = (await res.json()) as {
-        settings?: HeaderIconSettings;
-        error?: string;
-      };
-      if (!res.ok) {
-        setStatus(data.error ?? t("headerIcons.saveFailed"));
-        return;
-      }
-      if (data.settings) {
-        setMore(data.settings.more);
-        setMaxWidth(data.settings.maxWidth);
-      }
-      setStatus(t("headerIcons.settingsSaved"));
-    } catch {
-      setStatus(t("headerIcons.saveFailed"));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <form
-      method="post"
-      onSubmit={onSubmit}
-      className="max-w-xl space-y-4 rounded-xl border border-slate-700 p-4"
-      aria-describedby={statusId}
-    >
-      <h2 className="text-lg font-medium text-teal-200">{t("headerIcons.settings")}</h2>
-
-      <div className="flex items-center gap-3">
-        <input
-          id={moreId}
-          type="checkbox"
-          checked={more}
-          onChange={(e) => setMore(e.target.checked)}
-          className="h-4 w-4 accent-teal-500"
-        />
-        <Label htmlFor={moreId}>{t("headerIcons.morePoints")}</Label>
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor={widthId}>{t("headerIcons.maxWidth")}</Label>
-        <div className="flex max-w-xs items-center gap-2">
-          <Input
-            id={widthId}
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            value={maxWidth}
-            onChange={(e) => setMaxWidth(e.target.value.replace(/[^\d]/g, ""))}
-            className="flex-1"
-          />
-          <span className="text-sm text-slate-400" aria-hidden="true">
-            px
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>
-          {pending ? t("headerIcons.saving") : t("headerIcons.saveSettings")}
-        </Button>
-        <p id={statusId} className="text-sm text-slate-400" aria-live="polite">
-          {status}
-        </p>
-      </div>
-    </form>
-  );
-}
-
 export function HeaderIconsManager({
   initialIcons,
   initialSettings,
@@ -277,7 +145,7 @@ export function HeaderIconsManager({
   initialSettings: HeaderIconSettings;
   libraryIcons: IconRow[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [rows, setRows] = useState(initialIcons);
 
   const columns = useMemo<SndColumn<HeaderIconRow>[]>(
@@ -285,7 +153,7 @@ export function HeaderIconsManager({
       {
         id: "preview",
         header: t("icons.svg"),
-        filterValue: (r) => `${r.name} ${r.label}`,
+        filterValue: (r) => `${r.name} ${headerIconLabelText(r.label, locale)}`,
         cell: (r) => (
           <div className="flex items-center gap-2">
             {r.svg ? (
@@ -306,13 +174,15 @@ export function HeaderIconsManager({
       {
         id: "label",
         header: t("field.label"),
-        filterValue: (r) => r.label,
-        cell: (r) =>
-          r.label ? (
-            <span className="text-slate-200">{r.label}</span>
+        filterValue: (r) => headerIconLabelText(r.label, locale),
+        cell: (r) => {
+          const text = headerIconLabelText(r.label, locale);
+          return text ? (
+            <span className="text-slate-200">{text}</span>
           ) : (
             <span className="text-slate-600">—</span>
-          ),
+          );
+        },
       },
       {
         id: "link",
@@ -338,12 +208,21 @@ export function HeaderIconsManager({
           ),
       },
     ],
-    [t],
+    [t, locale],
   );
 
   return (
     <div className="space-y-8">
-      <SettingsForm initial={initialSettings} />
+      <HeaderStripSettingsForm
+        title={t("headerIcons.settings")}
+        initial={{
+          more: initialSettings.more,
+          maxWidth: initialSettings.maxWidth,
+          color: initialSettings.color,
+          colorHover: initialSettings.colorHover,
+        }}
+        saveUrl="/api/site/header/icons"
+      />
 
       <div className="space-y-3">
         <h2 className="text-lg font-medium text-teal-200">{t("headerIcons.list")}</h2>
@@ -375,7 +254,7 @@ export function HeaderIconsManager({
           createEmpty={() => ({
             icon_id: null,
             name: "",
-            label: "",
+            label: emptyLocaleMap(""),
             description: "",
             aria_label: "",
             link: "",

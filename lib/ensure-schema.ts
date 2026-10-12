@@ -1,3 +1,4 @@
+import { DEFAULT_AI_SETTINGS_JSON } from "./ai-defaults";
 import { getEnv } from "./env";
 
 let ready = false;
@@ -111,6 +112,8 @@ CREATE TABLE IF NOT EXISTS header_icon_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   more INTEGER NOT NULL DEFAULT 0,
   max_width TEXT NOT NULL DEFAULT '200',
+  color TEXT NOT NULL DEFAULT '',
+  color_hover TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -130,7 +133,93 @@ CREATE TABLE IF NOT EXISTS header_icons (
 );
 
 CREATE INDEX IF NOT EXISTS idx_header_icons_position ON header_icons(position);
+
+CREATE TABLE IF NOT EXISTS header_menu_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  more INTEGER NOT NULL DEFAULT 0,
+  max_width TEXT NOT NULL DEFAULT '400',
+  color TEXT NOT NULL DEFAULT '',
+  color_hover TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS header_menu_items (
+  id TEXT PRIMARY KEY,
+  parent_id TEXT,
+  icon_id TEXT,
+  name TEXT NOT NULL DEFAULT '',
+  label TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  aria_label TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '#',
+  color TEXT NOT NULL DEFAULT '',
+  color_hover TEXT NOT NULL DEFAULT '',
+  position INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_header_menu_items_parent ON header_menu_items(parent_id);
+CREATE INDEX IF NOT EXISTS idx_header_menu_items_position ON header_menu_items(position);
+
+CREATE TABLE IF NOT EXISTS library_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  max_width INTEGER NOT NULL DEFAULT 1920,
+  convert_to_webp INTEGER NOT NULL DEFAULT 1,
+  jpeg_quality REAL NOT NULL DEFAULT 0.85,
+  webp_quality REAL NOT NULL DEFAULT 0.82,
+  max_bytes INTEGER NOT NULL DEFAULT 15728640,
+  max_files_per_batch INTEGER NOT NULL DEFAULT 20,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS library_categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  position INTEGER NOT NULL DEFAULT 1,
+  is_system INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_library_categories_name ON library_categories(name);
+CREATE INDEX IF NOT EXISTS idx_library_categories_position ON library_categories(position);
+
+CREATE TABLE IF NOT EXISTS library_images (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  alt TEXT NOT NULL DEFAULT '',
+  master_key TEXT NOT NULL,
+  master_content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+  webp_key TEXT,
+  width INTEGER NOT NULL DEFAULT 0,
+  height INTEGER NOT NULL DEFAULT 0,
+  bytes INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_library_images_name ON library_images(name);
+CREATE INDEX IF NOT EXISTS idx_library_images_position ON library_images(position);
+
+CREATE TABLE IF NOT EXISTS library_image_categories (
+  image_id TEXT NOT NULL,
+  category_id TEXT NOT NULL,
+  PRIMARY KEY (image_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_image_categories_category
+  ON library_image_categories(category_id);
 `;
+
+async function tryAlter(db: D1Database, sql: string) {
+  try {
+    await db.prepare(sql).run();
+  } catch {
+    // column already exists
+  }
+}
 
 async function runStatements(db: D1Database, sql: string) {
   const statements = sql
@@ -170,14 +259,63 @@ export async function ensureSchema() {
 
   await SITE_DB.prepare(
     `INSERT OR IGNORE INTO site_settings (key, value_json) VALUES
-      ('ai', '{"endpoint":"https://api.openai.com/v1","model":"gpt-4o-mini","apiKey":""}'),
+      ('ai', ?),
       ('email', '{"to":"admin@ark.local","from":"noreply@ark.local","resendApiKey":""}'),
       ('locale', '{"default":"en","supported":["en","ro"]}')`,
+  )
+    .bind(DEFAULT_AI_SETTINGS_JSON)
+    .run();
+
+  // Migrate empty seed defaults (OpenAI or old CF chat defaults) to CF translation model.
+  await SITE_DB.prepare(
+    `UPDATE site_settings
+     SET value_json = ?, updated_at = datetime('now')
+     WHERE key = 'ai'
+       AND value_json LIKE '%"apiKey":""%'
+       AND (
+         value_json LIKE '%api.openai.com%'
+         OR value_json LIKE '%gpt-4o-mini%'
+         OR value_json LIKE '%llama-3.1-8b-instruct%'
+         OR value_json LIKE '%/ai/v1"%'
+       )`,
+  )
+    .bind(DEFAULT_AI_SETTINGS_JSON)
+    .run();
+
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE header_icon_settings ADD COLUMN color TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE header_icon_settings ADD COLUMN color_hover TEXT NOT NULL DEFAULT ''`,
+  );
+
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO header_icon_settings (id, more, max_width, color, color_hover)
+     VALUES (1, 0, '200', '', '')`,
   ).run();
 
   await SITE_DB.prepare(
-    `INSERT OR IGNORE INTO header_icon_settings (id, more, max_width) VALUES (1, 0, '200')`,
+    `INSERT OR IGNORE INTO header_menu_settings (id, more, max_width, color, color_hover)
+     VALUES (1, 0, '400', '', '')`,
   ).run();
+
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO library_settings (
+       id, max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_files_per_batch
+     ) VALUES (1, 1920, 1, 0.85, 0.82, 15728640, 20)`,
+  ).run();
+
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO library_categories (id, name, position, is_system)
+     VALUES ('unspecified', 'Unspecified', 1, 1)`,
+  ).run();
+
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE library_images ADD COLUMN alt TEXT NOT NULL DEFAULT ''`,
+  );
 
   ready = true;
 }

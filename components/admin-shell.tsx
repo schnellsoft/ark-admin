@@ -67,7 +67,16 @@ const siteTree: NavBranch = {
     { href: "/site/services", labelKey: "nav.services", icon: Stethoscope },
     { href: "/site/stuff", labelKey: "nav.stuff", icon: Users },
     { href: "/site/articles", labelKey: "nav.articles", icon: FileText },
-    { href: "/site/media", labelKey: "nav.media", icon: ImageIcon },
+    {
+      id: "media",
+      labelKey: "nav.media",
+      icon: ImageIcon,
+      children: [
+        { href: "/site/media", labelKey: "nav.library", icon: ImageIcon },
+        { href: "/site/media/categories", labelKey: "nav.mediaCategories", icon: List },
+        { href: "/site/media/settings", labelKey: "nav.mediaSettings", icon: Settings2 },
+      ],
+    },
     { href: "/site/icons", labelKey: "nav.icons", icon: Shapes },
     { href: "/site/seo", labelKey: "nav.seo", icon: Link2 },
     { href: "/site/settings", labelKey: "nav.settings", icon: Settings2 },
@@ -82,7 +91,8 @@ const userLinks: NavLeaf[] = [
 ];
 
 function pathMatches(pathname: string, href: string) {
-  if (href === "/site") return pathname === "/site";
+  // Exact match for overview-style leaves that share a prefix with siblings.
+  if (href === "/site" || href === "/site/media") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

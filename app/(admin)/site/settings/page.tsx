@@ -1,12 +1,9 @@
+import { DEFAULT_AI_SETTINGS } from "@/lib/ai-defaults";
 import { getSetting } from "@/lib/content";
 import { SettingsForm } from "@/components/settings-form";
 
 export default async function SettingsPage() {
-  const ai = (await getSetting("ai")) ?? {
-    endpoint: "https://api.openai.com/v1",
-    model: "gpt-4o-mini",
-    apiKey: "",
-  };
+  const ai = (await getSetting("ai")) ?? { ...DEFAULT_AI_SETTINGS };
   const email = (await getSetting("email")) ?? {
     to: "admin@ark.local",
     from: "noreply@ark.local",

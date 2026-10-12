@@ -1,9 +1,11 @@
 import { getEnv } from "./env";
 import {
+  asHeaderIconLabel,
   buildHeaderIconsDocument,
   emptyHeaderIconSettings,
   normalizeHeaderIconHex,
   normalizeHeaderIconLink,
+  serializeHeaderIconLabel,
   validateHeaderIconDraft,
   type HeaderIconRow,
   type HeaderIconSettings,
@@ -11,8 +13,10 @@ import {
 } from "./header-icons-shared";
 
 export {
+  asHeaderIconLabel,
   buildHeaderIconsDocument,
   emptyHeaderIconSettings,
+  serializeHeaderIconLabel,
   validateHeaderIconDraft,
   type HeaderIconRow,
   type HeaderIconSettings,
@@ -38,12 +42,14 @@ type HeaderIconDbRow = {
 export async function getHeaderIconSettings(): Promise<HeaderIconSettings> {
   const { SITE_DB } = getEnv();
   const row = await SITE_DB.prepare(
-    `SELECT more, max_width FROM header_icon_settings WHERE id = 1`,
-  ).first<{ more: number; max_width: string }>();
+    `SELECT more, max_width, color, color_hover FROM header_icon_settings WHERE id = 1`,
+  ).first<{ more: number; max_width: string; color?: string; color_hover?: string }>();
   if (!row) return emptyHeaderIconSettings();
   return {
     more: Boolean(row.more),
     maxWidth: String(row.max_width || "200").replace(/px$/i, ""),
+    color: row.color ?? "",
+    colorHover: row.color_hover ?? "",
   };
 }
 
@@ -61,7 +67,7 @@ export async function listHeaderIcons(): Promise<HeaderIconRow[]> {
     id: row.id,
     icon_id: row.icon_id,
     name: row.name ?? "",
-    label: row.label ?? "",
+    label: asHeaderIconLabel(row.label),
     description: row.description ?? "",
     aria_label: row.aria_label ?? "",
     link: row.link || "#",
@@ -90,14 +96,21 @@ export async function saveHeaderIconSettings(settings: HeaderIconSettings) {
   const { SITE_DB } = getEnv();
   const maxWidth = String(settings.maxWidth || "200").replace(/[^\d]/g, "") || "200";
   await SITE_DB.prepare(
-    `INSERT INTO header_icon_settings (id, more, max_width, updated_at)
-     VALUES (1, ?, ?, datetime('now'))
+    `INSERT INTO header_icon_settings (id, more, max_width, color, color_hover, updated_at)
+     VALUES (1, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET
        more = excluded.more,
        max_width = excluded.max_width,
+       color = excluded.color,
+       color_hover = excluded.color_hover,
        updated_at = excluded.updated_at`,
   )
-    .bind(settings.more ? 1 : 0, maxWidth)
+    .bind(
+      settings.more ? 1 : 0,
+      maxWidth,
+      normalizeHeaderIconHex(settings.color),
+      normalizeHeaderIconHex(settings.colorHover),
+    )
     .run();
 
   const saved = await getHeaderIconSettings();
@@ -140,7 +153,7 @@ export async function saveHeaderIconsBulk(icons: HeaderIconRow[]) {
         icon.id,
         icon.icon_id || null,
         icon.name?.trim() ?? "",
-        icon.label?.trim() ?? "",
+        serializeHeaderIconLabel(icon.label),
         icon.description?.trim() ?? "",
         icon.aria_label?.trim() ?? "",
         normalizeHeaderIconLink(icon.link),
@@ -154,4 +167,38 @@ export async function saveHeaderIconsBulk(icons: HeaderIconRow[]) {
   const saved = await listHeaderIcons();
   await syncHeaderIconsJson(undefined, saved);
   return saved;
+}
+
+/** Rewrite R2 JSON from current DB state (e.g. after label schema migration). */
+export async function refreshHeaderIconsJsonFromDb() {
+  return syncHeaderIconsJson();
+}
+
+/**
+ * Normalize legacy plain-string labels to LocaleMap JSON in D1,
+ * then rewrite header_icons.json so Astro always sees { ro, bg, en }.
+ */
+export async function ensureHeaderIconLabelsI18n() {
+  const { SITE_DB } = getEnv();
+  const rows = await SITE_DB.prepare(`SELECT id, label FROM header_icons`).all<{
+    id: string;
+    label: string;
+  }>();
+
+  let changed = false;
+  for (const row of rows.results ?? []) {
+    const serialized = serializeHeaderIconLabel(row.label);
+    if (serialized !== (row.label ?? "")) {
+      await SITE_DB.prepare(
+        `UPDATE header_icons SET label = ?, updated_at = datetime('now') WHERE id = ?`,
+      )
+        .bind(serialized, row.id)
+        .run();
+      changed = true;
+    }
+  }
+
+  if (changed || (rows.results?.length ?? 0) >= 0) {
+    await syncHeaderIconsJson();
+  }
 }
