@@ -3,8 +3,10 @@
 import { useId, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import {
-  isAcceptedLibraryImage,
+  isAcceptedLibraryFile,
+  isAcceptedLibraryVideo,
   prepareLibraryImage,
+  prepareLibraryVideo,
   uploadLibraryImageWithProgress,
 } from "@/lib/library-image-client";
 import {
@@ -59,7 +61,7 @@ export function LibraryUploader({
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList?.length || pending) return;
-    const files = [...fileList].filter(isAcceptedLibraryImage);
+    const files = [...fileList].filter(isAcceptedLibraryFile);
     if (files.length === 0) {
       setStatusKind("error");
       setStatus(t("library.uploadTypes"));
@@ -101,7 +103,9 @@ export function LibraryUploader({
         const span = 100 / total;
         setProgress(Math.round(base));
 
-        const prepared = await prepareLibraryImage(file, settings);
+        const prepared = isAcceptedLibraryVideo(file)
+          ? await prepareLibraryVideo(file, settings)
+          : await prepareLibraryImage(file, settings);
         const form = new FormData();
         form.set("id", prepared.id);
         form.set("name", suggestLibraryNameFromFile(file.name));
@@ -228,7 +232,7 @@ export function LibraryUploader({
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
           multiple
           hidden
           onChange={(e) => void handleFiles(e.target.files)}
@@ -248,8 +252,9 @@ export function LibraryUploader({
           </button>
         </p>
         <p className="font-mono text-[10px] uppercase tracking-wide text-slate-500">
-          JPG · PNG · WebP ·{" "}
-          {Math.round(settings.maxBytes / (1024 * 1024))} MB ·{" "}
+          JPG · PNG · WebP · MP4 · WebM ·{" "}
+          {Math.round(settings.maxBytes / (1024 * 1024))} MB img /{" "}
+          {Math.round(settings.maxVideoBytes / (1024 * 1024))} MB vid ·{" "}
           {settings.maxFilesPerBatch} {t("library.files")}
         </p>
       </div>

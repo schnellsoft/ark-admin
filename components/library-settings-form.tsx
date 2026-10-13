@@ -20,6 +20,9 @@ export function LibrarySettingsForm({
   const [maxBytesMb, setMaxBytesMb] = useState(
     String(Math.round(initial.maxBytes / (1024 * 1024))),
   );
+  const [maxVideoBytesMb, setMaxVideoBytesMb] = useState(
+    String(Math.round(initial.maxVideoBytes / (1024 * 1024))),
+  );
   const [maxFilesPerBatch, setMaxFilesPerBatch] = useState(
     String(initial.maxFilesPerBatch),
   );
@@ -41,6 +44,7 @@ export function LibrarySettingsForm({
           jpegQuality: Number(jpegQuality),
           webpQuality: Number(webpQuality),
           maxBytes: Number(maxBytesMb) * 1024 * 1024,
+          maxVideoBytes: Number(maxVideoBytesMb) * 1024 * 1024,
           maxFilesPerBatch: Number(maxFilesPerBatch),
         }),
       });
@@ -58,6 +62,9 @@ export function LibrarySettingsForm({
         setJpegQuality(String(data.settings.jpegQuality));
         setWebpQuality(String(data.settings.webpQuality));
         setMaxBytesMb(String(Math.round(data.settings.maxBytes / (1024 * 1024))));
+        setMaxVideoBytesMb(
+          String(Math.round(data.settings.maxVideoBytes / (1024 * 1024))),
+        );
         setMaxFilesPerBatch(String(data.settings.maxFilesPerBatch));
       }
       setStatus(t("library.settingsSaved"));
@@ -135,6 +142,18 @@ export function LibrarySettingsForm({
             min={1}
             value={maxBytesMb}
             onChange={(e) => setMaxBytesMb(e.target.value.replace(/[^\d]/g, ""))}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`${formId}-vmb`}>{t("library.maxVideoBytesMb")}</Label>
+          <Input
+            id={`${formId}-vmb`}
+            type="number"
+            min={1}
+            value={maxVideoBytesMb}
+            onChange={(e) =>
+              setMaxVideoBytesMb(e.target.value.replace(/[^\d]/g, ""))
+            }
           />
         </div>
         <div className="space-y-1">

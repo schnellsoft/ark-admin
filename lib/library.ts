@@ -13,6 +13,7 @@ import {
   suggestLibraryNameFromFile,
   validateLibraryCategoryDraft,
   validateLibraryImageDraft,
+  type LibraryAssetKind,
   type LibraryCategory,
   type LibraryDocument,
   type LibraryImage,
@@ -25,6 +26,7 @@ export {
   UNSPECIFIED_CATEGORY_ID,
   UNSPECIFIED_CATEGORY_NAME,
   ACCEPTED_IMAGE_TYPES,
+  ACCEPTED_VIDEO_TYPES,
   buildLibraryDocument,
   emptyLibrarySettings,
   ensureCategoryIds,
@@ -35,6 +37,7 @@ export {
   suggestLibraryNameFromFile,
   validateLibraryCategoryDraft,
   validateLibraryImageDraft,
+  type LibraryAssetKind,
   type LibraryCategory,
   type LibraryDocument,
   type LibraryImage,
@@ -52,6 +55,7 @@ type ImageDbRow = {
   id: string;
   name: string;
   alt: string | null;
+  kind: string | null;
   master_key: string;
   master_content_type: string;
   webp_key: string | null;
@@ -64,7 +68,7 @@ type ImageDbRow = {
 export async function getLibrarySettings(): Promise<LibrarySettings> {
   const { SITE_DB } = getEnv();
   const row = await SITE_DB.prepare(
-    `SELECT max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_files_per_batch
+    `SELECT max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_video_bytes, max_files_per_batch
      FROM library_settings WHERE id = 1`,
   ).first<{
     max_width: number;
@@ -72,6 +76,7 @@ export async function getLibrarySettings(): Promise<LibrarySettings> {
     jpeg_quality: number;
     webp_quality: number;
     max_bytes: number;
+    max_video_bytes?: number;
     max_files_per_batch: number;
   }>();
 
@@ -82,6 +87,7 @@ export async function getLibrarySettings(): Promise<LibrarySettings> {
     jpegQuality: row.jpeg_quality,
     webpQuality: row.webp_quality,
     maxBytes: row.max_bytes,
+    maxVideoBytes: row.max_video_bytes,
     maxFilesPerBatch: row.max_files_per_batch,
   });
 }
@@ -119,7 +125,7 @@ export async function listLibraryImages(): Promise<LibraryImage[]> {
   const { SITE_DB } = getEnv();
   const [rows, categoryMap] = await Promise.all([
     SITE_DB.prepare(
-      `SELECT id, name, alt, master_key, master_content_type, webp_key, width, height, bytes, position
+      `SELECT id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position
        FROM library_images ORDER BY position ASC`,
     ).all<ImageDbRow>(),
     listImageCategoryMap(),
@@ -129,6 +135,7 @@ export async function listLibraryImages(): Promise<LibraryImage[]> {
     id: row.id,
     name: row.name,
     alt: row.alt ?? "",
+    kind: (row.kind === "video" ? "video" : "image") as LibraryAssetKind,
     master_key: row.master_key,
     master_content_type: row.master_content_type,
     webp_key: row.webp_key,
@@ -194,14 +201,15 @@ export async function saveLibrarySettings(
   const next = normalizeLibrarySettings(settings);
   await SITE_DB.prepare(
     `INSERT INTO library_settings
-       (id, max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_files_per_batch, updated_at)
-     VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
+       (id, max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_video_bytes, max_files_per_batch, updated_at)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET
        max_width = excluded.max_width,
        convert_to_webp = excluded.convert_to_webp,
        jpeg_quality = excluded.jpeg_quality,
        webp_quality = excluded.webp_quality,
        max_bytes = excluded.max_bytes,
+       max_video_bytes = excluded.max_video_bytes,
        max_files_per_batch = excluded.max_files_per_batch,
        updated_at = excluded.updated_at`,
   )
@@ -211,6 +219,7 @@ export async function saveLibrarySettings(
       next.jpegQuality,
       next.webpQuality,
       next.maxBytes,
+      next.maxVideoBytes,
       next.maxFilesPerBatch,
     )
     .run();
@@ -350,14 +359,16 @@ export async function saveLibraryImagesBulk(
     const height = prior?.height ?? image.height;
     const bytes = prior?.bytes ?? image.bytes;
     const alt = normalizeLibraryAlt(image.alt ?? prior?.alt ?? "");
+    const kind = image.kind === "video" || prior?.kind === "video" ? "video" : "image";
 
     await SITE_DB.prepare(
       `INSERT INTO library_images
-         (id, name, alt, master_key, master_content_type, webp_key, width, height, bytes, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+         (id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          alt = excluded.alt,
+         kind = excluded.kind,
          master_key = excluded.master_key,
          master_content_type = excluded.master_content_type,
          webp_key = excluded.webp_key,
@@ -371,6 +382,7 @@ export async function saveLibraryImagesBulk(
         image.id,
         name,
         alt,
+        kind,
         masterKey,
         masterType,
         webpKey,
@@ -452,6 +464,7 @@ export type CreateLibraryImageInput = {
   id: string;
   name: string;
   alt?: string;
+  kind?: LibraryAssetKind;
   master: ArrayBuffer;
   masterContentType: string;
   webp?: ArrayBuffer | null;
@@ -466,12 +479,13 @@ export async function createLibraryImage(
   const { SITE_DB, MEDIA } = getEnv();
   const name = await allocateUniqueLibraryName(input.name);
   const alt = normalizeLibraryAlt(input.alt ?? "");
+  const kind: LibraryAssetKind = input.kind === "video" ? "video" : "image";
 
   const ext = extensionForContentType(input.masterContentType);
   const masterKey = `${LIBRARY_MEDIA_PREFIX}${input.id}.${ext}`;
   const isMasterWebp = ext === "webp";
   const webpKey =
-    input.webp && !isMasterWebp
+    kind === "image" && input.webp && !isMasterWebp
       ? `${LIBRARY_MEDIA_PREFIX}${input.id}.webp`
       : null;
 
@@ -492,13 +506,14 @@ export async function createLibraryImage(
 
   await SITE_DB.prepare(
     `INSERT INTO library_images
-       (id, name, alt, master_key, master_content_type, webp_key, width, height, bytes, position, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       (id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
   )
     .bind(
       input.id,
       name,
       alt,
+      kind,
       masterKey,
       input.masterContentType,
       webpKey,

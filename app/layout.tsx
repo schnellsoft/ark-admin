@@ -1,15 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Source_Sans_3 } from "next/font/google";
+import { Roboto } from "next/font/google";
 import "./globals.css";
 
-const display = Fraunces({
+const roboto = Roboto({
   subsets: ["latin"],
-  variable: "--font-display",
+  weight: ["400", "500", "700"],
+  variable: "--font-sans",
 });
 
-const sans = Source_Sans_3({
+const robotoDisplay = Roboto({
   subsets: ["latin"],
-  variable: "--font-sans",
+  weight: ["500", "700"],
+  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +37,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${display.variable} ${sans.variable} font-[family-name:var(--font-sans)] antialiased`}>
+      <body
+        className={`${roboto.variable} ${robotoDisplay.variable} font-[family-name:var(--font-sans)] antialiased`}
+      >
         {children}
         <script
           dangerouslySetInnerHTML={{

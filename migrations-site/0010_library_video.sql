@@ -1,0 +1,2 @@
+ALTER TABLE library_settings ADD COLUMN max_video_bytes INTEGER NOT NULL DEFAULT 83886080;
+ALTER TABLE library_images ADD COLUMN kind TEXT NOT NULL DEFAULT 'image';

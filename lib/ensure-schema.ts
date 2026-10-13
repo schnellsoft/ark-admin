@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS library_settings (
   jpeg_quality REAL NOT NULL DEFAULT 0.85,
   webp_quality REAL NOT NULL DEFAULT 0.82,
   max_bytes INTEGER NOT NULL DEFAULT 15728640,
+  max_video_bytes INTEGER NOT NULL DEFAULT 83886080,
   max_files_per_batch INTEGER NOT NULL DEFAULT 20,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -189,6 +190,7 @@ CREATE TABLE IF NOT EXISTS library_images (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
   alt TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'image',
   master_key TEXT NOT NULL,
   master_content_type TEXT NOT NULL DEFAULT 'image/jpeg',
   webp_key TEXT,
@@ -211,6 +213,121 @@ CREATE TABLE IF NOT EXISTS library_image_categories (
 
 CREATE INDEX IF NOT EXISTS idx_library_image_categories_category
   ON library_image_categories(category_id);
+
+CREATE TABLE IF NOT EXISTS slideshow_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  animation TEXT NOT NULL DEFAULT 'fade',
+  autoplay INTEGER NOT NULL DEFAULT 1,
+  autoplay_interval INTEGER NOT NULL DEFAULT 7000,
+  animation_duration INTEGER NOT NULL DEFAULT 780,
+  kenburns INTEGER NOT NULL DEFAULT 1,
+  finite INTEGER NOT NULL DEFAULT 0,
+  pause_on_hover INTEGER NOT NULL DEFAULT 1,
+  velocity REAL NOT NULL DEFAULT 1,
+  swipe_threshold INTEGER NOT NULL DEFAULT 48,
+  ratio TEXT NOT NULL DEFAULT '16:9',
+  min_height TEXT NOT NULL DEFAULT '',
+  max_height TEXT NOT NULL DEFAULT '',
+  idx INTEGER NOT NULL DEFAULT 0,
+  output_json TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS slideshow_slides (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  title TEXT NOT NULL DEFAULT '',
+  alt TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  media_kind TEXT NOT NULL DEFAULT 'image',
+  version TEXT NOT NULL DEFAULT '',
+  mobile_crop_json TEXT NOT NULL DEFAULT '',
+  desktop_crop_json TEXT NOT NULL DEFAULT '',
+  desktop_focus_json TEXT NOT NULL DEFAULT '',
+  filters_json TEXT NOT NULL DEFAULT '',
+  files_json TEXT NOT NULL DEFAULT '{}',
+  layer_json TEXT NOT NULL DEFAULT '',
+  library_asset_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_slideshow_slides_position ON slideshow_slides(position);
+`;
+
+const SERVICES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS service_categories (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  icon_key TEXT NOT NULL DEFAULT '',
+  icon_svg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_categories_position ON service_categories(position);
+
+CREATE TABLE IF NOT EXISTS service_subcategories (
+  id TEXT PRIMARY KEY,
+  category_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  icon_svg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_subcategories_category ON service_subcategories(category_id, position);
+
+CREATE TABLE IF NOT EXISTS services (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  title_ro TEXT NOT NULL DEFAULT '',
+  title_en TEXT NOT NULL DEFAULT '',
+  title_bg TEXT NOT NULL DEFAULT '',
+  category_id TEXT NOT NULL,
+  subcategory_id TEXT,
+  icon_id TEXT,
+  icon_svg TEXT NOT NULL DEFAULT '',
+  price_text TEXT NOT NULL DEFAULT '',
+  currency TEXT NOT NULL DEFAULT 'RON',
+  page_path TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_services_position ON services(position);
+CREATE INDEX IF NOT EXISTS idx_services_category ON services(category_id, position);
+
+CREATE TABLE IF NOT EXISTS service_recommended (
+  service_id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_recommended_position ON service_recommended(position);
+
+CREATE TABLE IF NOT EXISTS service_pages (
+  service_id TEXT PRIMARY KEY,
+  synopsis_ro TEXT NOT NULL DEFAULT '',
+  synopsis_en TEXT NOT NULL DEFAULT '',
+  synopsis_bg TEXT NOT NULL DEFAULT '',
+  body_json_ro TEXT NOT NULL DEFAULT '[]',
+  body_json_en TEXT NOT NULL DEFAULT '[]',
+  body_json_bg TEXT NOT NULL DEFAULT '[]',
+  images_json TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 async function tryAlter(db: D1Database, sql: string) {
@@ -301,10 +418,24 @@ export async function ensureSchema() {
      VALUES (1, 0, '400', '', '')`,
   ).run();
 
+  // Existing local DBs were created before these columns — alter before any INSERT/SELECT that uses them.
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE library_settings ADD COLUMN max_video_bytes INTEGER NOT NULL DEFAULT 83886080`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE library_images ADD COLUMN alt TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE library_images ADD COLUMN kind TEXT NOT NULL DEFAULT 'image'`,
+  );
+
   await SITE_DB.prepare(
     `INSERT OR IGNORE INTO library_settings (
-       id, max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_files_per_batch
-     ) VALUES (1, 1920, 1, 0.85, 0.82, 15728640, 20)`,
+       id, max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_video_bytes, max_files_per_batch
+     ) VALUES (1, 1920, 1, 0.85, 0.82, 15728640, 83886080, 20)`,
   ).run();
 
   await SITE_DB.prepare(
@@ -314,8 +445,46 @@ export async function ensureSchema() {
 
   await tryAlter(
     SITE_DB,
-    `ALTER TABLE library_images ADD COLUMN alt TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE slideshow_settings ADD COLUMN animation_duration INTEGER NOT NULL DEFAULT 780`,
   );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_settings ADD COLUMN kenburns INTEGER NOT NULL DEFAULT 1`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_settings ADD COLUMN swipe_threshold INTEGER NOT NULL DEFAULT 48`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_settings ADD COLUMN output_json TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_slides ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_slides ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_slides ADD COLUMN filters_json TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_slides ADD COLUMN desktop_crop_json TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE slideshow_slides ADD COLUMN desktop_focus_json TEXT NOT NULL DEFAULT ''`,
+  );
+
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO slideshow_settings (id) VALUES (1)`,
+  ).run();
+
+  await runStatements(SITE_DB, SERVICES_SCHEMA);
 
   ready = true;
 }

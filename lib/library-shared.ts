@@ -10,12 +10,17 @@ export const ACCEPTED_IMAGE_TYPES = [
   "image/webp",
 ] as const;
 
+export const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm"] as const;
+
+export type LibraryAssetKind = "image" | "video";
+
 export type LibrarySettings = {
   maxWidth: number;
   convertToWebp: boolean;
   jpegQuality: number;
   webpQuality: number;
   maxBytes: number;
+  maxVideoBytes: number;
   maxFilesPerBatch: number;
 };
 
@@ -30,6 +35,7 @@ export type LibraryImage = {
   id: string;
   name: string;
   alt: string;
+  kind: LibraryAssetKind;
   master_key: string;
   master_content_type: string;
   webp_key: string | null;
@@ -47,6 +53,7 @@ export type LibraryDocument = {
     id: string;
     name: string;
     alt: string;
+    kind: LibraryAssetKind;
     master: string;
     webp: string | null;
     width: number;
@@ -64,6 +71,7 @@ export function emptyLibrarySettings(): LibrarySettings {
     jpegQuality: 0.85,
     webpQuality: 0.82,
     maxBytes: 15 * 1024 * 1024,
+    maxVideoBytes: 80 * 1024 * 1024,
     maxFilesPerBatch: 20,
   };
 }
@@ -73,6 +81,8 @@ export function extensionForContentType(contentType: string): string {
   if (ct === "image/jpeg" || ct === "image/jpg") return "jpg";
   if (ct === "image/png") return "png";
   if (ct === "image/webp") return "webp";
+  if (ct === "video/mp4") return "mp4";
+  if (ct === "video/webm") return "webm";
   return "bin";
 }
 
@@ -92,7 +102,7 @@ export function suggestLibraryNameFromFile(fileName: string): string {
     .replace(/[^\p{L}\p{N}._-]+/gu, "-")
     .replace(/-+/g, "-")
     .replace(/^[-_.]+|[-_.]+$/g, "");
-  return cleaned.slice(0, 160) || `image-${Date.now()}`;
+  return cleaned.slice(0, 160) || `asset-${Date.now()}`;
 }
 
 export function validateLibraryImageDraft(draft: Partial<LibraryImage>): string | null {
@@ -143,6 +153,7 @@ export function buildLibraryDocument(
         id: img.id,
         name: img.name,
         alt: img.alt ?? "",
+        kind: img.kind === "video" ? "video" : "image",
         master: img.master_key,
         webp: img.webp_key,
         width: img.width,
@@ -166,6 +177,7 @@ export function normalizeLibrarySettings(
   if (!partial) return base;
   const maxWidth = Math.round(Number(partial.maxWidth));
   const maxBytes = Math.round(Number(partial.maxBytes));
+  const maxVideoBytes = Math.round(Number(partial.maxVideoBytes));
   const maxFiles = Math.round(Number(partial.maxFilesPerBatch));
   return {
     maxWidth:
@@ -177,6 +189,10 @@ export function normalizeLibrarySettings(
     webpQuality: clampQuality(Number(partial.webpQuality), base.webpQuality),
     maxBytes:
       Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : base.maxBytes,
+    maxVideoBytes:
+      Number.isFinite(maxVideoBytes) && maxVideoBytes > 0
+        ? maxVideoBytes
+        : base.maxVideoBytes,
     maxFilesPerBatch:
       Number.isFinite(maxFiles) && maxFiles > 0 && maxFiles <= 100
         ? maxFiles

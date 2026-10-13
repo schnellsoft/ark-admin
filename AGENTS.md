@@ -13,7 +13,7 @@ dbusers ===> ark-admin-db database.
 
 slideshow_json ===> ark-admin-content/slideshow/slideshow.json
 slide_html ===> ark-admin-content/slideshow/html/<slidId>.html
-slide_media_folder ===> ark-admin-media/slideshow/<slideId>/
+slide_folder ===> ark-admin-media/slideshow/<slideId>/
 library_folder ===> ark-admin-media/library/
 library_json ===> ark-admin-content/library/library.json
 

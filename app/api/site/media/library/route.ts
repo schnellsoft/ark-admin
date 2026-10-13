@@ -13,6 +13,7 @@ const imageSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(200),
   alt: z.string().max(500).default(""),
+  kind: z.enum(["image", "video"]).default("image"),
   master_key: z.string().min(1),
   master_content_type: z.string().min(1),
   webp_key: z.string().nullable().optional(),
@@ -54,6 +55,7 @@ export async function PUT(request: Request) {
           ({
             ...image,
             alt: image.alt ?? "",
+            kind: image.kind,
             webp_key: image.webp_key ?? null,
             categoryIds: image.categoryIds,
           }) satisfies LibraryImage,

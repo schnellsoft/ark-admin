@@ -13,6 +13,7 @@ const settingsSchema = z.object({
   jpegQuality: z.union([z.string(), z.number()]).optional(),
   webpQuality: z.union([z.string(), z.number()]).optional(),
   maxBytes: z.union([z.string(), z.number()]).optional(),
+  maxVideoBytes: z.union([z.string(), z.number()]).optional(),
   maxFilesPerBatch: z.union([z.string(), z.number()]).optional(),
 });
 
@@ -47,6 +48,9 @@ export async function PATCH(request: Request) {
           : {}),
         ...(parsed.data.maxBytes !== undefined
           ? { maxBytes: Number(parsed.data.maxBytes) }
+          : {}),
+        ...(parsed.data.maxVideoBytes !== undefined
+          ? { maxVideoBytes: Number(parsed.data.maxVideoBytes) }
           : {}),
         ...(parsed.data.maxFilesPerBatch !== undefined
           ? { maxFilesPerBatch: Number(parsed.data.maxFilesPerBatch) }

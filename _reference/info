@@ -1,0 +1,35 @@
+Added pnpm run slideshow:to-site in ark-admin. It pushes local miniflare slideshow → remote R2 → runs ark-site sync:slideshow. Verified end-to-end just now.
+
+Everyday workflow
+1. Edit in admin (http://localhost:5173)
+Open the slide.
+Change image / crop / filters / HTML layer as needed.
+Click Save slide (this also bakes crop/filter into image files).
+Keep Published on if it should show on the site.
+2. Push local → site (from ark-admin)
+cd /home/dan/Desktop/ark-admin
+pnpm run slideshow:to-site
+That does:
+
+Read local Vite/miniflare R2
+Upload to remote ark-admin-content + ark-admin-media
+Run pnpm run sync:slideshow in ../ark-site
+If ark-site lives elsewhere:
+
+ARK_SITE_ROOT=/path/to/ark-site pnpm run slideshow:to-site
+3. View on Astro (http://localhost:4321)
+Hard-refresh the browser (Ctrl+Shift+R).
+
+Other commands
+Command	What it does
+pnpm run slideshow:to-site
+Local miniflare → remote → ark-site sync (usual)
+pnpm run slideshow:push-remote
+Local → remote only (no site sync)
+pnpm run slideshow:to-site -- --dry-run
+List what would upload, no writes
+In ark-site: pnpm run sync:slideshow
+Remote → site only
+Remember
+Admin pnpm run dev writes to local R2. Astro sync reads remote R2. Always run slideshow:to-site after saves you want to see on the static site.
+Crop/filter changes need Save slide first so baked -m-* / -d-* files exist locally, then slideshow:to-site.

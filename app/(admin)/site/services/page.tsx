@@ -1,17 +1,32 @@
-import { getDraft } from "@/lib/content";
-import { ServicesListManager } from "@/components/services-list-manager";
+import { Suspense } from "react";
+import { ServicesManager } from "@/components/services-manager";
+import { listIcons } from "@/lib/icons";
+import {
+  listCategories,
+  listRecommended,
+  listServices,
+  listSubcategories,
+} from "@/lib/services";
 
 export default async function ServicesPage() {
-  const draft = (await getDraft("services")) ?? {
-    items: [
-      {
-        id: "00000000-0000-4000-8000-000000000011",
-        position: 1,
-        title: { ro: "Curățare", bg: "Почистване", en: "Cleaning" },
-        html: { ro: "<p>Curățare profesională.</p>", bg: "<p>Професионално почистване.</p>", en: "<p>Professional cleaning.</p>" },
-      },
-    ],
-  };
+  const [categories, subcategories, services, recommended, icons] =
+    await Promise.all([
+      listCategories(),
+      listSubcategories(),
+      listServices(),
+      listRecommended(),
+      listIcons(),
+    ]);
 
-  return <ServicesListManager initialDraft={draft} />;
+  return (
+    <Suspense fallback={<p className="text-slate-400">…</p>}>
+      <ServicesManager
+        categories={categories}
+        subcategories={subcategories}
+        services={services}
+        recommended={recommended}
+        icons={icons}
+      />
+    </Suspense>
+  );
 }

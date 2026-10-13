@@ -63,8 +63,25 @@ const siteTree: NavBranch = {
         { href: "/site/header/menu", labelKey: "nav.menu", icon: List },
       ],
     },
-    { href: "/site/slideshow", labelKey: "nav.slideshow", icon: Images },
-    { href: "/site/services", labelKey: "nav.services", icon: Stethoscope },
+    {
+      id: "slideshow",
+      labelKey: "nav.slideshow",
+      icon: Images,
+      children: [
+        { href: "/site/slideshow", labelKey: "nav.slides", icon: Images },
+        { href: "/site/slideshow/settings", labelKey: "nav.slideshowSettings", icon: Settings2 },
+      ],
+    },
+    {
+      id: "services",
+      labelKey: "nav.services",
+      icon: Stethoscope,
+      children: [
+        { href: "/site/services", labelKey: "nav.servicesList", icon: Stethoscope },
+        { href: "/site/services?tab=categories", labelKey: "nav.serviceCategories", icon: List },
+        { href: "/site/services?tab=recommended", labelKey: "nav.serviceRecommended", icon: Sparkles },
+      ],
+    },
     { href: "/site/stuff", labelKey: "nav.stuff", icon: Users },
     { href: "/site/articles", labelKey: "nav.articles", icon: FileText },
     {
@@ -92,7 +109,19 @@ const userLinks: NavLeaf[] = [
 
 function pathMatches(pathname: string, href: string) {
   // Exact match for overview-style leaves that share a prefix with siblings.
-  if (href === "/site" || href === "/site/media") return pathname === href;
+  if (href === "/site" || href === "/site/media") {
+    return pathname === href;
+  }
+  if (href === "/site/slideshow") {
+    return (
+      pathname === href ||
+      (pathname.startsWith("/site/slideshow/") &&
+        !pathname.startsWith("/site/slideshow/settings"))
+    );
+  }
+  if (href === "/site/services") {
+    return pathname === href || pathname.startsWith("/site/services/");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

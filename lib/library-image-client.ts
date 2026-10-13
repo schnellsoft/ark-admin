@@ -1,5 +1,6 @@
 import {
   ACCEPTED_IMAGE_TYPES,
+  ACCEPTED_VIDEO_TYPES,
   type LibrarySettings,
 } from "./library-shared";
 
@@ -11,16 +12,30 @@ export type PreparedLibraryImage = {
   width: number;
   height: number;
   sourceName: string;
+  kind: "image" | "video";
 };
 
-const acceptedExtensions = /\.(jpe?g|png|webp)$/i;
+const acceptedImageExtensions = /\.(jpe?g|png|webp)$/i;
+const acceptedVideoExtensions = /\.(mp4|webm)$/i;
 
 export function isAcceptedLibraryImage(file: File): boolean {
   if ((ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
     return true;
   }
-  if (!file.type && acceptedExtensions.test(file.name)) return true;
+  if (!file.type && acceptedImageExtensions.test(file.name)) return true;
   return false;
+}
+
+export function isAcceptedLibraryVideo(file: File): boolean {
+  if ((ACCEPTED_VIDEO_TYPES as readonly string[]).includes(file.type)) {
+    return true;
+  }
+  if (!file.type && acceptedVideoExtensions.test(file.name)) return true;
+  return false;
+}
+
+export function isAcceptedLibraryFile(file: File): boolean {
+  return isAcceptedLibraryImage(file) || isAcceptedLibraryVideo(file);
 }
 
 function loadImageBitmap(file: File): Promise<ImageBitmap> {
@@ -113,10 +128,42 @@ export async function prepareLibraryImage(
       width,
       height,
       sourceName: file.name,
+      kind: "image",
     };
   } finally {
     bitmap.close();
   }
+}
+
+/** Pass-through for video (no transcoding on free tier). */
+export async function prepareLibraryVideo(
+  file: File,
+  settings: LibrarySettings,
+): Promise<PreparedLibraryImage> {
+  if (!isAcceptedLibraryVideo(file)) {
+    throw new Error("Choose MP4 or WebM videos.");
+  }
+  if (file.size > settings.maxVideoBytes) {
+    throw new Error(
+      `Each video must be ${Math.round(settings.maxVideoBytes / (1024 * 1024))} MB or smaller.`,
+    );
+  }
+  const type =
+    file.type === "video/webm"
+      ? "video/webm"
+      : file.name.toLowerCase().endsWith(".webm")
+        ? "video/webm"
+        : "video/mp4";
+  return {
+    id: crypto.randomUUID(),
+    masterBlob: file,
+    masterContentType: type,
+    webpBlob: null,
+    width: 0,
+    height: 0,
+    sourceName: file.name,
+    kind: "video",
+  };
 }
 
 export function uploadLibraryImageWithProgress(

@@ -91,14 +91,31 @@ export function LibraryManager({
       {
         id: "preview",
         header: t("library.preview"),
+        cell: (row) =>
+          row.kind === "video" ? (
+            <video
+              src={previewUrl(row.master_key)}
+              className="h-12 w-12 rounded object-cover"
+              muted
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewUrl(row.master_key)}
+              alt={row.alt || row.name}
+              className="h-12 w-12 rounded object-cover"
+              loading="lazy"
+            />
+          ),
+      },
+      {
+        id: "kind",
+        header: t("library.kind"),
+        filterValue: (row) => row.kind,
         cell: (row) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={previewUrl(row.master_key)}
-            alt={row.alt || row.name}
-            className="h-12 w-12 rounded object-cover"
-            loading="lazy"
-          />
+          <span className="text-xs uppercase text-slate-400">{row.kind}</span>
         ),
       },
       {
@@ -239,6 +256,7 @@ export function LibraryManager({
           createEmpty={() => ({
             name: "",
             alt: "",
+            kind: "image" as const,
             categoryIds: [UNSPECIFIED_CATEGORY_ID],
             master_key: "",
             master_content_type: "image/jpeg",

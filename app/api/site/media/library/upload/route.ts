@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import {
   ACCEPTED_IMAGE_TYPES,
+  ACCEPTED_VIDEO_TYPES,
   createLibraryImage,
   getLibrarySettings,
   suggestLibraryNameFromFile,
@@ -15,24 +16,27 @@ export async function POST(request: Request) {
 
     const master = form.get("master");
     if (!(master instanceof File)) {
-      return NextResponse.json({ error: "Missing master image" }, { status: 400 });
+      return NextResponse.json({ error: "Missing file" }, { status: 400 });
     }
 
     const contentType = (master.type || "application/octet-stream").toLowerCase();
-    if (
-      !(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(contentType) &&
-      contentType !== "image/jpg"
-    ) {
+    const isVideo = (ACCEPTED_VIDEO_TYPES as readonly string[]).includes(contentType);
+    const isImage =
+      (ACCEPTED_IMAGE_TYPES as readonly string[]).includes(contentType) ||
+      contentType === "image/jpg";
+
+    if (!isImage && !isVideo) {
       return NextResponse.json(
-        { error: "Only JPG, PNG, or WebP images are accepted" },
+        { error: "Only JPG, PNG, WebP images or MP4/WebM videos are accepted" },
         { status: 415 },
       );
     }
 
-    if (master.size > settings.maxBytes) {
+    const maxBytes = isVideo ? settings.maxVideoBytes : settings.maxBytes;
+    if (master.size > maxBytes) {
       return NextResponse.json(
         {
-          error: `Each image must be ${Math.round(settings.maxBytes / (1024 * 1024))} MB or smaller`,
+          error: `Each ${isVideo ? "video" : "image"} must be ${Math.round(maxBytes / (1024 * 1024))} MB or smaller`,
         },
         { status: 400 },
       );
@@ -40,8 +44,10 @@ export async function POST(request: Request) {
 
     const width = Number.parseInt(String(form.get("width") ?? "0"), 10);
     const height = Number.parseInt(String(form.get("height") ?? "0"), 10);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
-      return NextResponse.json({ error: "Invalid dimensions" }, { status: 400 });
+    if (isImage) {
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+        return NextResponse.json({ error: "Invalid dimensions" }, { status: 400 });
+      }
     }
 
     let categoryIds: string[] = [];
@@ -64,13 +70,13 @@ export async function POST(request: Request) {
 
     const preferredName =
       String(form.get("name") ?? "").trim() ||
-      suggestLibraryNameFromFile(master.name || `image-${id}`);
+      suggestLibraryNameFromFile(master.name || `asset-${id}`);
 
     const alt = String(form.get("alt") ?? "").trim();
 
     const webpFile = form.get("webp");
     const webp =
-      webpFile instanceof File && webpFile.size > 0
+      !isVideo && webpFile instanceof File && webpFile.size > 0
         ? await webpFile.arrayBuffer()
         : null;
 
@@ -81,11 +87,12 @@ export async function POST(request: Request) {
       id,
       name: preferredName,
       alt,
+      kind: isVideo ? "video" : "image",
       master: await master.arrayBuffer(),
       masterContentType: masterType,
-      webp: settings.convertToWebp ? webp : null,
-      width,
-      height,
+      webp: isVideo ? null : settings.convertToWebp ? webp : null,
+      width: isVideo ? (Number.isFinite(width) ? width : 0) : width,
+      height: isVideo ? (Number.isFinite(height) ? height : 0) : height,
       categoryIds,
     });
 
