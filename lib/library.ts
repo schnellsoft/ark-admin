@@ -59,6 +59,7 @@ type ImageDbRow = {
   master_key: string;
   master_content_type: string;
   webp_key: string | null;
+  portrait_800_key: string | null;
   width: number;
   height: number;
   bytes: number;
@@ -125,7 +126,8 @@ export async function listLibraryImages(): Promise<LibraryImage[]> {
   const { SITE_DB } = getEnv();
   const [rows, categoryMap] = await Promise.all([
     SITE_DB.prepare(
-      `SELECT id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position
+      `SELECT id, name, alt, kind, master_key, master_content_type, webp_key, portrait_800_key,
+              width, height, bytes, position
        FROM library_images ORDER BY position ASC`,
     ).all<ImageDbRow>(),
     listImageCategoryMap(),
@@ -139,6 +141,7 @@ export async function listLibraryImages(): Promise<LibraryImage[]> {
     master_key: row.master_key,
     master_content_type: row.master_content_type,
     webp_key: row.webp_key,
+    portrait_800_key: row.portrait_800_key ?? null,
     width: row.width,
     height: row.height,
     bytes: row.bytes,
@@ -338,7 +341,11 @@ export async function saveLibraryImagesBulk(
       await SITE_DB.prepare(`DELETE FROM library_images WHERE id = ?`)
         .bind(old.id)
         .run();
-      await deleteMediaKeys([old.master_key, old.webp_key]);
+      await deleteMediaKeys([
+        old.master_key,
+        old.webp_key,
+        old.portrait_800_key,
+      ]);
     }
   }
 
@@ -354,6 +361,8 @@ export async function saveLibraryImagesBulk(
     const prior = existing.find((e) => e.id === image.id);
     const masterKey = prior?.master_key ?? image.master_key;
     const webpKey = prior?.webp_key ?? image.webp_key ?? null;
+    const portrait800Key =
+      prior?.portrait_800_key ?? image.portrait_800_key ?? null;
     const masterType = prior?.master_content_type ?? image.master_content_type;
     const width = prior?.width ?? image.width;
     const height = prior?.height ?? image.height;
@@ -363,8 +372,9 @@ export async function saveLibraryImagesBulk(
 
     await SITE_DB.prepare(
       `INSERT INTO library_images
-         (id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+         (id, name, alt, kind, master_key, master_content_type, webp_key, portrait_800_key,
+          width, height, bytes, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          alt = excluded.alt,
@@ -372,6 +382,7 @@ export async function saveLibraryImagesBulk(
          master_key = excluded.master_key,
          master_content_type = excluded.master_content_type,
          webp_key = excluded.webp_key,
+         portrait_800_key = excluded.portrait_800_key,
          width = excluded.width,
          height = excluded.height,
          bytes = excluded.bytes,
@@ -386,6 +397,7 @@ export async function saveLibraryImagesBulk(
         masterKey,
         masterType,
         webpKey,
+        portrait800Key,
         width,
         height,
         bytes,
@@ -404,10 +416,15 @@ export async function saveLibraryImagesBulk(
 export async function deleteLibraryImage(id: string): Promise<void> {
   const { SITE_DB } = getEnv();
   const row = await SITE_DB.prepare(
-    `SELECT id, master_key, webp_key FROM library_images WHERE id = ?`,
+    `SELECT id, master_key, webp_key, portrait_800_key FROM library_images WHERE id = ?`,
   )
     .bind(id)
-    .first<{ id: string; master_key: string; webp_key: string | null }>();
+    .first<{
+      id: string;
+      master_key: string;
+      webp_key: string | null;
+      portrait_800_key: string | null;
+    }>();
 
   if (!row) throw new Error("Image not found");
 
@@ -415,7 +432,7 @@ export async function deleteLibraryImage(id: string): Promise<void> {
     .bind(id)
     .run();
   await SITE_DB.prepare(`DELETE FROM library_images WHERE id = ?`).bind(id).run();
-  await deleteMediaKeys([row.master_key, row.webp_key]);
+  await deleteMediaKeys([row.master_key, row.webp_key, row.portrait_800_key]);
 
   // Renumber remaining
   const remaining = await listLibraryImages();
@@ -468,6 +485,7 @@ export type CreateLibraryImageInput = {
   master: ArrayBuffer;
   masterContentType: string;
   webp?: ArrayBuffer | null;
+  portrait800?: ArrayBuffer | null;
   width: number;
   height: number;
   categoryIds: string[];
@@ -488,6 +506,10 @@ export async function createLibraryImage(
     kind === "image" && input.webp && !isMasterWebp
       ? `${LIBRARY_MEDIA_PREFIX}${input.id}.webp`
       : null;
+  const portrait800Key =
+    kind === "image" && input.portrait800
+      ? `${LIBRARY_MEDIA_PREFIX}${input.id}-p800.webp`
+      : null;
 
   await MEDIA.put(masterKey, input.master, {
     httpMetadata: { contentType: input.masterContentType },
@@ -497,17 +519,26 @@ export async function createLibraryImage(
       httpMetadata: { contentType: "image/webp" },
     });
   }
+  if (portrait800Key && input.portrait800) {
+    await MEDIA.put(portrait800Key, input.portrait800, {
+      httpMetadata: { contentType: "image/webp" },
+    });
+  }
 
   const maxPos = await SITE_DB.prepare(
     `SELECT COALESCE(MAX(position), 0) AS n FROM library_images`,
   ).first<{ n: number }>();
   const position = (maxPos?.n ?? 0) + 1;
-  const bytes = input.master.byteLength + (input.webp?.byteLength ?? 0);
+  const bytes =
+    input.master.byteLength +
+    (input.webp?.byteLength ?? 0) +
+    (input.portrait800?.byteLength ?? 0);
 
   await SITE_DB.prepare(
     `INSERT INTO library_images
-       (id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       (id, name, alt, kind, master_key, master_content_type, webp_key, portrait_800_key,
+        width, height, bytes, position, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
   )
     .bind(
       input.id,
@@ -517,6 +548,7 @@ export async function createLibraryImage(
       masterKey,
       input.masterContentType,
       webpKey,
+      portrait800Key,
       input.width,
       input.height,
       bytes,

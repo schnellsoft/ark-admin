@@ -1,7 +1,9 @@
 import { DEFAULT_AI_SETTINGS_JSON } from "./ai-defaults";
 import { getEnv } from "./env";
 
-let ready = false;
+/** Bump when additive migrations must re-run on already-booted local DBs. */
+const SCHEMA_EPOCH = 3;
+let schemaReadyEpoch = 0;
 
 const USERS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -330,6 +332,147 @@ CREATE TABLE IF NOT EXISTS service_pages (
 );
 `;
 
+const STUFF_SCHEMA = `
+CREATE TABLE IF NOT EXISTS stuff_categories (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  icon_key TEXT NOT NULL DEFAULT '',
+  icon_svg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_categories_position ON stuff_categories(position);
+
+CREATE TABLE IF NOT EXISTS stuff_subcategories (
+  id TEXT PRIMARY KEY,
+  category_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  icon_svg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_subcategories_category ON stuff_subcategories(category_id, position);
+
+CREATE TABLE IF NOT EXISTS stuff_members (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  role_ro TEXT NOT NULL DEFAULT '',
+  role_en TEXT NOT NULL DEFAULT '',
+  role_bg TEXT NOT NULL DEFAULT '',
+  snippet_ro TEXT NOT NULL DEFAULT '',
+  snippet_en TEXT NOT NULL DEFAULT '',
+  snippet_bg TEXT NOT NULL DEFAULT '',
+  category_id TEXT NOT NULL,
+  subcategory_id TEXT,
+  portrait_library_id TEXT,
+  portrait_master_key TEXT NOT NULL DEFAULT '',
+  portrait_webp_key TEXT,
+  portrait_800_key TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_members_position ON stuff_members(position);
+CREATE INDEX IF NOT EXISTS idx_stuff_members_category ON stuff_members(category_id, position);
+`;
+
+const SCHEDULE_LOCATION_SCHEMA = `
+CREATE TABLE IF NOT EXISTS schedule_days (
+  day INTEGER PRIMARY KEY CHECK (day BETWEEN 1 AND 7),
+  open_time TEXT NOT NULL DEFAULT '',
+  close_time TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS location_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  latitude TEXT NOT NULL DEFAULT '',
+  longitude TEXT NOT NULL DEFAULT '',
+  google_maps_key TEXT NOT NULL DEFAULT '',
+  building_library_id TEXT,
+  building_master_key TEXT NOT NULL DEFAULT '',
+  building_webp_key TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+const ARTICLES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS article_categories (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  icon_key TEXT NOT NULL DEFAULT '',
+  icon_svg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_categories_position ON article_categories(position);
+
+CREATE TABLE IF NOT EXISTS article_subcategories (
+  id TEXT PRIMARY KEY,
+  category_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  icon_svg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_subcategories_category ON article_subcategories(category_id, position);
+
+CREATE TABLE IF NOT EXISTS articles (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  title_ro TEXT NOT NULL DEFAULT '',
+  title_en TEXT NOT NULL DEFAULT '',
+  title_bg TEXT NOT NULL DEFAULT '',
+  category_id TEXT,
+  subcategory_id TEXT,
+  published_at TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_articles_position ON articles(position);
+CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category_id, position);
+
+CREATE TABLE IF NOT EXISTS article_pages (
+  article_id TEXT PRIMARY KEY,
+  body_html_ro TEXT NOT NULL DEFAULT '',
+  body_html_en TEXT NOT NULL DEFAULT '',
+  body_html_bg TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
 async function tryAlter(db: D1Database, sql: string) {
   try {
     await db.prepare(sql).run();
@@ -349,7 +492,7 @@ async function runStatements(db: D1Database, sql: string) {
 }
 
 export async function ensureSchema() {
-  if (ready) return;
+  if (schemaReadyEpoch === SCHEMA_EPOCH) return;
   const { DB, SITE_DB } = getEnv();
 
   await runStatements(DB, USERS_SCHEMA);
@@ -485,6 +628,43 @@ export async function ensureSchema() {
   ).run();
 
   await runStatements(SITE_DB, SERVICES_SCHEMA);
+  await runStatements(SITE_DB, STUFF_SCHEMA);
+  await runStatements(SITE_DB, SCHEDULE_LOCATION_SCHEMA);
+  await runStatements(SITE_DB, ARTICLES_SCHEMA);
 
-  ready = true;
+  for (const day of [1, 2, 3, 4, 5, 6, 7]) {
+    await SITE_DB.prepare(
+      `INSERT OR IGNORE INTO schedule_days (day, open_time, close_time) VALUES (?, '', '')`,
+    )
+      .bind(day)
+      .run();
+  }
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO location_settings (id) VALUES (1)`,
+  ).run();
+
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE library_images ADD COLUMN portrait_800_key TEXT`,
+  );
+
+  // Existing local DBs may have been created before these article columns existed.
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN published_at TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN category_id TEXT`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN subcategory_id TEXT`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+  );
+
+  schemaReadyEpoch = SCHEMA_EPOCH;
 }

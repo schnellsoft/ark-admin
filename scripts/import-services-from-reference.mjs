@@ -63,7 +63,7 @@ function priceText(price) {
 }
 
 function pagePath(slug) {
-  return `/services/${slug}`;
+  return `/services/${slug}/`;
 }
 
 function readSvg(relOrAbs) {

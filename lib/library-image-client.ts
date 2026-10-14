@@ -4,11 +4,17 @@ import {
   type LibrarySettings,
 } from "./library-shared";
 
+export type PrepareLibraryImageOptions = {
+  /** Long-edge max for an extra portrait WebP sibling (e.g. staff portraits). */
+  portraitMaxEdge?: number;
+};
+
 export type PreparedLibraryImage = {
   id: string;
   masterBlob: Blob;
   masterContentType: string;
   webpBlob: Blob | null;
+  portrait800Blob: Blob | null;
   width: number;
   height: number;
   sourceName: string;
@@ -81,6 +87,7 @@ function masterMimeFromFile(file: File): "image/jpeg" | "image/png" | "image/web
 export async function prepareLibraryImage(
   file: File,
   settings: LibrarySettings,
+  options?: PrepareLibraryImageOptions,
 ): Promise<PreparedLibraryImage> {
   if (!isAcceptedLibraryImage(file)) {
     throw new Error("Choose JPG, PNG, or WebP images.");
@@ -120,11 +127,36 @@ export async function prepareLibraryImage(
       webpBlob = await canvasToBlob(canvas, "image/webp", settings.webpQuality);
     }
 
+    let portrait800Blob: Blob | null = null;
+    const portraitMax = options?.portraitMaxEdge;
+    if (
+      typeof portraitMax === "number" &&
+      Number.isFinite(portraitMax) &&
+      portraitMax > 0
+    ) {
+      const longEdge = Math.max(bitmap.width, bitmap.height);
+      const pScale = longEdge > portraitMax ? portraitMax / longEdge : 1;
+      const pW = Math.max(1, Math.round(bitmap.width * pScale));
+      const pH = Math.max(1, Math.round(bitmap.height * pScale));
+      const pCanvas = document.createElement("canvas");
+      pCanvas.width = pW;
+      pCanvas.height = pH;
+      const pCtx = pCanvas.getContext("2d");
+      if (!pCtx) throw new Error("Canvas is not available");
+      pCtx.drawImage(bitmap, 0, 0, pW, pH);
+      portrait800Blob = await canvasToBlob(
+        pCanvas,
+        "image/webp",
+        settings.webpQuality,
+      );
+    }
+
     return {
       id: crypto.randomUUID(),
       masterBlob,
       masterContentType: masterType,
       webpBlob,
+      portrait800Blob,
       width,
       height,
       sourceName: file.name,
@@ -159,6 +191,7 @@ export async function prepareLibraryVideo(
     masterBlob: file,
     masterContentType: type,
     webpBlob: null,
+    portrait800Blob: null,
     width: 0,
     height: 0,
     sourceName: file.name,

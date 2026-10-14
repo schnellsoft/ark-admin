@@ -80,6 +80,14 @@ export async function POST(request: Request) {
         ? await webpFile.arrayBuffer()
         : null;
 
+    const portrait800File = form.get("portrait800");
+    const portrait800 =
+      !isVideo &&
+      portrait800File instanceof File &&
+      portrait800File.size > 0
+        ? await portrait800File.arrayBuffer()
+        : null;
+
     const masterType =
       contentType === "image/jpg" ? "image/jpeg" : contentType;
 
@@ -91,6 +99,7 @@ export async function POST(request: Request) {
       master: await master.arrayBuffer(),
       masterContentType: masterType,
       webp: isVideo ? null : settings.convertToWebp ? webp : null,
+      portrait800: isVideo ? null : portrait800,
       width: isVideo ? (Number.isFinite(width) ? width : 0) : width,
       height: isVideo ? (Number.isFinite(height) ? height : 0) : height,
       categoryIds,

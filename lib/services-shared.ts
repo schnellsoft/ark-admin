@@ -127,7 +127,8 @@ export function slugifyService(input: string): string {
 }
 
 export function pagePathForSlug(slug: string): string {
-  return `/services/${slug}`;
+  // Trailing slash required by ark-site (`trailingSlash: 'always'`).
+  return `/services/${slug}/`;
 }
 
 export function emptyServiceCategory(): Partial<ServiceCategory> {

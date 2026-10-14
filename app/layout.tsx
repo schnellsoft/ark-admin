@@ -16,8 +16,18 @@ const robotoDisplay = Roboto({
 
 export const metadata: Metadata = {
   title: "Ark Admin",
-  description: "Admin PWA for the Ark dental clinic static site",
+  description: "Private admin PWA — not for public indexing",
   manifest: "/manifest.webmanifest",
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+    },
+  },
   appleWebApp: {
     capable: true,
     title: "Ark Admin",

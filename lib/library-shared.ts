@@ -39,6 +39,8 @@ export type LibraryImage = {
   master_key: string;
   master_content_type: string;
   webp_key: string | null;
+  /** Optional long-edge ≤800 portrait sibling (WebP). */
+  portrait_800_key: string | null;
   width: number;
   height: number;
   bytes: number;
@@ -56,6 +58,7 @@ export type LibraryDocument = {
     kind: LibraryAssetKind;
     master: string;
     webp: string | null;
+    portrait800: string | null;
     width: number;
     height: number;
     bytes: number;
@@ -156,6 +159,7 @@ export function buildLibraryDocument(
         kind: img.kind === "video" ? "video" : "image",
         master: img.master_key,
         webp: img.webp_key,
+        portrait800: img.portrait_800_key ?? null,
         width: img.width,
         height: img.height,
         bytes: img.bytes,

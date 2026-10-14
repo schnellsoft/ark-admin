@@ -261,6 +261,7 @@ export function LibraryManager({
             master_key: "",
             master_content_type: "image/jpeg",
             webp_key: null,
+            portrait_800_key: null,
             width: 0,
             height: 0,
             bytes: 0,

@@ -1,7 +1,7 @@
 {
   "name": "Ark Admin",
   "short_name": "ArkAdmin",
-  "description": "Admin PWA for the Ark dental clinic static site",
+  "description": "Private clinic admin — not for public discovery",
   "start_url": "/site",
   "display": "standalone",
   "background_color": "#0b1220",

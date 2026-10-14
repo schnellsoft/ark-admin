@@ -1,18 +1,29 @@
-import { getDraft } from "@/lib/content";
-import { StuffListManager } from "@/components/stuff-list-manager";
+import { Suspense } from "react";
+import { StuffManager } from "@/components/stuff-manager";
+import { getLibrarySettings } from "@/lib/library";
+import {
+  listStuffCategories,
+  listStuffMembers,
+  listStuffSubcategories,
+} from "@/lib/stuff";
 
 export default async function StuffPage() {
-  const draft = (await getDraft("stuff")) ?? {
-    items: [
-      {
-        id: "00000000-0000-4000-8000-000000000021",
-        position: 1,
-        name: { ro: "Dr. Ada", bg: "Д-р Ада", en: "Dr. Ada" },
-        role: { ro: "Dentist", bg: "Зъболекар", en: "Dentist" },
-        bio: { ro: "", bg: "", en: "" },
-      },
-    ],
-  };
+  const [categories, subcategories, members, librarySettings] =
+    await Promise.all([
+      listStuffCategories(),
+      listStuffSubcategories(),
+      listStuffMembers(),
+      getLibrarySettings(),
+    ]);
 
-  return <StuffListManager initialDraft={draft} />;
+  return (
+    <Suspense fallback={<p className="text-slate-400">…</p>}>
+      <StuffManager
+        categories={categories}
+        subcategories={subcategories}
+        members={members}
+        librarySettings={librarySettings}
+      />
+    </Suspense>
+  );
 }

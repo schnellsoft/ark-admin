@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
+  Clock,
   CloudUpload,
   FileText,
   ImageIcon,
@@ -70,6 +71,7 @@ const siteTree: NavBranch = {
       children: [
         { href: "/site/slideshow", labelKey: "nav.slides", icon: Images },
         { href: "/site/slideshow/settings", labelKey: "nav.slideshowSettings", icon: Settings2 },
+        { href: "/site/galleries", labelKey: "nav.galleries", icon: Images },
       ],
     },
     {
@@ -83,7 +85,21 @@ const siteTree: NavBranch = {
       ],
     },
     { href: "/site/stuff", labelKey: "nav.stuff", icon: Users },
-    { href: "/site/articles", labelKey: "nav.articles", icon: FileText },
+    { href: "/site/schedule", labelKey: "nav.schedule", icon: Clock },
+    { href: "/site/location", labelKey: "nav.location", icon: MapPin },
+    {
+      id: "articles",
+      labelKey: "nav.articles",
+      icon: FileText,
+      children: [
+        { href: "/site/articles", labelKey: "nav.articlesList", icon: FileText },
+        {
+          href: "/site/articles?tab=categories",
+          labelKey: "nav.articleCategories",
+          icon: List,
+        },
+      ],
+    },
     {
       id: "media",
       labelKey: "nav.media",
@@ -121,6 +137,9 @@ function pathMatches(pathname: string, href: string) {
   }
   if (href === "/site/services") {
     return pathname === href || pathname.startsWith("/site/services/");
+  }
+  if (href === "/site/articles") {
+    return pathname === href || pathname.startsWith("/site/articles/");
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
