@@ -44,8 +44,98 @@ export function isAcceptedLibraryFile(file: File): boolean {
   return isAcceptedLibraryImage(file) || isAcceptedLibraryVideo(file);
 }
 
-function loadImageBitmap(file: File): Promise<ImageBitmap> {
-  return createImageBitmap(file);
+type DecodedImage = {
+  width: number;
+  height: number;
+  draw: (ctx: CanvasRenderingContext2D, dw: number, dh: number) => void;
+  close: () => void;
+};
+
+function loadViaImageElement(file: File): Promise<DecodedImage> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => {
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+      if (!width || !height) {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not read image dimensions"));
+        return;
+      }
+      resolve({
+        width,
+        height,
+        draw: (ctx, dw, dh) => {
+          ctx.drawImage(img, 0, 0, dw, dh);
+        },
+        close: () => {
+          URL.revokeObjectURL(url);
+          img.removeAttribute("src");
+        },
+      });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Browser could not decode this image"));
+    };
+    img.src = url;
+  });
+}
+
+async function loadViaImageBitmap(
+  file: File,
+  resizeWidth?: number,
+): Promise<DecodedImage> {
+  const opts: ImageBitmapOptions = {
+    imageOrientation: "from-image",
+    resizeQuality: "high",
+  };
+  if (typeof resizeWidth === "number" && resizeWidth > 0) {
+    opts.resizeWidth = resizeWidth;
+  }
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, opts);
+  } catch {
+    const fallback: ImageBitmapOptions = { resizeQuality: "high" };
+    if (typeof resizeWidth === "number" && resizeWidth > 0) {
+      fallback.resizeWidth = resizeWidth;
+    }
+    bitmap = await createImageBitmap(file, fallback);
+  }
+  return {
+    width: bitmap.width,
+    height: bitmap.height,
+    draw: (ctx, dw, dh) => {
+      ctx.drawImage(bitmap, 0, 0, dw, dh);
+    },
+    close: () => {
+      bitmap.close();
+    },
+  };
+}
+
+/**
+ * Prefer createImageBitmap (orientation-aware), decoding already capped by
+ * max width for large camera JPEGs. Fall back to HTMLImageElement.
+ */
+async function loadDecodedImage(
+  file: File,
+  resizeWidth?: number,
+): Promise<DecodedImage> {
+  try {
+    return await loadViaImageBitmap(file, resizeWidth);
+  } catch (err) {
+    try {
+      return await loadViaImageElement(file);
+    } catch {
+      throw err instanceof Error
+        ? err
+        : new Error("Browser could not decode this image");
+    }
+  }
 }
 
 function canvasToBlob(
@@ -79,8 +169,21 @@ function masterMimeFromFile(file: File): "image/jpeg" | "image/png" | "image/web
   return "image/jpeg";
 }
 
+function fitWithin(
+  srcW: number,
+  srcH: number,
+  maxEdge: number,
+): { width: number; height: number } {
+  const longEdge = Math.max(srcW, srcH);
+  const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+  return {
+    width: Math.max(1, Math.round(srcW * scale)),
+    height: Math.max(1, Math.round(srcH * scale)),
+  };
+}
+
 /**
- * Resize to max width (preserve aspect). Encodes master in original family
+ * Resize to library max width (preserve aspect). Encodes master in original family
  * (jpeg/png/webp) and optionally a WebP sibling when convertToWebp is on
  * and master is not already WebP.
  */
@@ -98,20 +201,20 @@ export async function prepareLibraryImage(
     );
   }
 
-  const bitmap = await loadImageBitmap(file);
+  // Decode already width-capped so 12–20 MP camera JPEGs never sit full-res in memory.
+  const decodeCap = Math.min(settings.maxWidth, 4096);
+  const decoded = await loadDecodedImage(file, decodeCap);
   try {
-    const maxWidth = settings.maxWidth;
-    const scale =
-      bitmap.width > maxWidth ? maxWidth / bitmap.width : 1;
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const sized = fitWithin(decoded.width, decoded.height, 4096);
+    const width = sized.width;
+    const height = sized.height;
 
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas is not available");
-    ctx.drawImage(bitmap, 0, 0, width, height);
+    decoded.draw(ctx, width, height);
 
     const masterType = masterMimeFromFile(file);
     const masterQuality =
@@ -134,16 +237,14 @@ export async function prepareLibraryImage(
       Number.isFinite(portraitMax) &&
       portraitMax > 0
     ) {
-      const longEdge = Math.max(bitmap.width, bitmap.height);
-      const pScale = longEdge > portraitMax ? portraitMax / longEdge : 1;
-      const pW = Math.max(1, Math.round(bitmap.width * pScale));
-      const pH = Math.max(1, Math.round(bitmap.height * pScale));
+      const portrait = fitWithin(width, height, portraitMax);
       const pCanvas = document.createElement("canvas");
-      pCanvas.width = pW;
-      pCanvas.height = pH;
+      pCanvas.width = portrait.width;
+      pCanvas.height = portrait.height;
       const pCtx = pCanvas.getContext("2d");
       if (!pCtx) throw new Error("Canvas is not available");
-      pCtx.drawImage(bitmap, 0, 0, pW, pH);
+      // Scale from already-resized master canvas (lower memory than full original).
+      pCtx.drawImage(canvas, 0, 0, portrait.width, portrait.height);
       portrait800Blob = await canvasToBlob(
         pCanvas,
         "image/webp",
@@ -163,7 +264,7 @@ export async function prepareLibraryImage(
       kind: "image",
     };
   } finally {
-    bitmap.close();
+    decoded.close();
   }
 }
 
@@ -220,6 +321,12 @@ export function uploadLibraryImageWithProgress(
       };
       if (request.status >= 200 && request.status < 300) {
         resolve(result);
+      } else if (request.status === 413) {
+        reject(
+          new Error(
+            "Upload too large for the server limit. Try a smaller image or raise serverActions.bodySizeLimit.",
+          ),
+        );
       } else {
         reject(new Error(result.error || "Upload failed."));
       }
@@ -229,6 +336,61 @@ export function uploadLibraryImageWithProgress(
     );
     request.addEventListener("abort", () =>
       reject(new Error("Upload cancelled.")),
+    );
+    request.send(form);
+  });
+}
+
+/** Build a long-edge WebP (and optional full WebP) from an existing library file URL. */
+export async function encodePortraitVariantsFromUrl(
+  sourceUrl: string,
+  settings: LibrarySettings,
+  portraitMaxEdge: number,
+): Promise<{ webpBlob: Blob | null; portrait800Blob: Blob }> {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error("Could not load library image");
+  const blob = await res.blob();
+  const file = new File([blob], "library-source", {
+    type: blob.type || "image/jpeg",
+  });
+  const prepared = await prepareLibraryImage(file, settings, {
+    portraitMaxEdge,
+  });
+  if (!prepared.portrait800Blob) {
+    throw new Error("Could not encode portrait variant");
+  }
+  return {
+    webpBlob: prepared.webpBlob,
+    portrait800Blob: prepared.portrait800Blob,
+  };
+}
+
+export function uploadLibraryVariantsWithProgress(
+  form: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<{ image?: unknown; error?: string }> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/site/media/library/variants");
+    request.responseType = "json";
+    request.upload.addEventListener("progress", (event) => {
+      if (onProgress && event.lengthComputable) {
+        onProgress((event.loaded / event.total) * 100);
+      }
+    });
+    request.addEventListener("load", () => {
+      const result = (request.response || {}) as {
+        image?: unknown;
+        error?: string;
+      };
+      if (request.status >= 200 && request.status < 300) {
+        resolve(result);
+      } else {
+        reject(new Error(result.error || "Variant upload failed."));
+      }
+    });
+    request.addEventListener("error", () =>
+      reject(new Error("Could not reach the server.")),
     );
     request.send(form);
   });

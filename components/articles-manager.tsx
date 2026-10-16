@@ -4,20 +4,28 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 import { ArticlesCategoriesManager } from "@/components/articles-categories-manager";
+import { ArticlesFirstPageManager } from "@/components/articles-first-page-manager";
 import { ArticlesGridManager } from "@/components/articles-grid-manager";
 import type {
   ArticleCategory,
+  ArticleFirstPageSlot,
   ArticleRow,
   ArticleSubcategory,
 } from "@/lib/articles-shared";
 import type { LibraryCategory, LibraryImage } from "@/lib/library-shared";
 import { cn } from "@/lib/utils";
 
-type Tab = "list" | "categories";
+type Tab = "list" | "categories" | "first-page";
 
 function tabFromPath(pathname: string): Tab {
   if (pathname.endsWith("/categories") || pathname.includes("/categories/")) {
     return "categories";
+  }
+  if (
+    pathname.endsWith("/first-page") ||
+    pathname.includes("/first-page/")
+  ) {
+    return "first-page";
   }
   return "list";
 }
@@ -28,12 +36,14 @@ export function ArticlesManager({
   articles,
   libraryAssets,
   libraryCategories,
+  firstPageSlots = [],
 }: {
   categories: ArticleCategory[];
   subcategories: ArticleSubcategory[];
   articles: ArticleRow[];
   libraryAssets: LibraryImage[];
   libraryCategories: LibraryCategory[];
+  firstPageSlots?: ArticleFirstPageSlot[];
 }) {
   const { t } = useI18n();
   const pathname = usePathname();
@@ -54,6 +64,11 @@ export function ArticlesManager({
       id: "categories",
       label: t("articles.tabCategories") || "Articles categories",
       href: "/site/articles/categories",
+    },
+    {
+      id: "first-page",
+      label: t("articles.tabFirstPage") || "On first page",
+      href: "/site/articles/first-page",
     },
   ];
 
@@ -95,6 +110,12 @@ export function ArticlesManager({
         <ArticlesCategoriesManager
           initialCategories={categories}
           initialSubcategories={subcategories}
+        />
+      ) : null}
+      {tab === "first-page" ? (
+        <ArticlesFirstPageManager
+          initialSlots={firstPageSlots}
+          articles={articles}
         />
       ) : null}
       {tab === "list" ? (

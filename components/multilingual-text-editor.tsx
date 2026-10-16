@@ -19,12 +19,14 @@ export function MultilingualTextEditor({
   label,
   value,
   onChange,
+  onBlur,
   multiline = false,
   rows = 6,
 }: {
   label: string;
   value: LocaleMap;
   onChange: (next: LocaleMap) => void;
+  onBlur?: (next: LocaleMap) => void;
   multiline?: boolean;
   rows?: number;
 }) {
@@ -108,11 +110,17 @@ export function MultilingualTextEditor({
           rows={rows}
           value={map[editLocale] ?? ""}
           onChange={(e) => onChange({ ...map, [editLocale]: e.target.value })}
+          onBlur={(e) =>
+            onBlur?.({ ...map, [editLocale]: e.currentTarget.value })
+          }
         />
       ) : (
         <Input
           value={map[editLocale] ?? ""}
           onChange={(e) => onChange({ ...map, [editLocale]: e.target.value })}
+          onBlur={(e) =>
+            onBlur?.({ ...map, [editLocale]: e.currentTarget.value })
+          }
         />
       )}
       {status ? <p className="text-xs text-slate-400">{status}</p> : null}

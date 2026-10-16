@@ -2,7 +2,7 @@ import { DEFAULT_AI_SETTINGS_JSON } from "./ai-defaults";
 import { getEnv } from "./env";
 
 /** Bump when additive migrations must re-run on already-booted local DBs. */
-const SCHEMA_EPOCH = 6;
+const SCHEMA_EPOCH = 14;
 let schemaReadyEpoch = 0;
 
 const USERS_SCHEMA = `
@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS library_settings (
   convert_to_webp INTEGER NOT NULL DEFAULT 1,
   jpeg_quality REAL NOT NULL DEFAULT 0.85,
   webp_quality REAL NOT NULL DEFAULT 0.82,
-  max_bytes INTEGER NOT NULL DEFAULT 15728640,
+  max_bytes INTEGER NOT NULL DEFAULT 26214400,
   max_video_bytes INTEGER NOT NULL DEFAULT 83886080,
   max_files_per_batch INTEGER NOT NULL DEFAULT 20,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -379,6 +379,45 @@ CREATE TABLE IF NOT EXISTS stuff_subcategories (
 
 CREATE INDEX IF NOT EXISTS idx_stuff_subcategories_category ON stuff_subcategories(category_id, position);
 
+CREATE TABLE IF NOT EXISTS stuff_roles (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_roles_position ON stuff_roles(position);
+
+CREATE TABLE IF NOT EXISTS stuff_specialties (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_specialties_position ON stuff_specialties(position);
+
+CREATE TABLE IF NOT EXISTS stuff_provided_services (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_provided_services_position ON stuff_provided_services(position);
+
 CREATE TABLE IF NOT EXISTS stuff_members (
   id TEXT PRIMARY KEY,
   position INTEGER NOT NULL DEFAULT 1,
@@ -389,6 +428,13 @@ CREATE TABLE IF NOT EXISTS stuff_members (
   role_ro TEXT NOT NULL DEFAULT '',
   role_en TEXT NOT NULL DEFAULT '',
   role_bg TEXT NOT NULL DEFAULT '',
+  specialty_ro TEXT NOT NULL DEFAULT '',
+  specialty_en TEXT NOT NULL DEFAULT '',
+  specialty_bg TEXT NOT NULL DEFAULT '',
+  role_id TEXT,
+  specialty_id TEXT,
+  doctor_title INTEGER NOT NULL DEFAULT 0,
+  college TEXT NOT NULL DEFAULT '',
   snippet_ro TEXT NOT NULL DEFAULT '',
   snippet_en TEXT NOT NULL DEFAULT '',
   snippet_bg TEXT NOT NULL DEFAULT '',
@@ -405,6 +451,24 @@ CREATE TABLE IF NOT EXISTS stuff_members (
 
 CREATE INDEX IF NOT EXISTS idx_stuff_members_position ON stuff_members(position);
 CREATE INDEX IF NOT EXISTS idx_stuff_members_category ON stuff_members(category_id, position);
+
+CREATE TABLE IF NOT EXISTS stuff_member_provided_services (
+  member_id TEXT NOT NULL,
+  service_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (member_id, service_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stuff_member_provided_services_member
+  ON stuff_member_provided_services(member_id, position);
+
+CREATE TABLE IF NOT EXISTS stuff_spotlight_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  autoplay INTEGER NOT NULL DEFAULT 1,
+  delay_ms INTEGER NOT NULL DEFAULT 3000,
+  stop_on_hover INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 const SCHEDULE_LOCATION_SCHEMA = `
@@ -503,6 +567,15 @@ CREATE TABLE IF NOT EXISTS article_pages (
   body_html_bg TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS article_first_page (
+  article_id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_first_page_position ON article_first_page(position);
 `;
 
 async function tryAlter(db: D1Database, sql: string) {
@@ -610,7 +683,12 @@ export async function ensureSchema() {
   await SITE_DB.prepare(
     `INSERT OR IGNORE INTO library_settings (
        id, max_width, convert_to_webp, jpeg_quality, webp_quality, max_bytes, max_video_bytes, max_files_per_batch
-     ) VALUES (1, 1920, 1, 0.85, 0.82, 15728640, 83886080, 20)`,
+     ) VALUES (1, 1920, 1, 0.85, 0.82, 26214400, 83886080, 20)`,
+  ).run();
+  // Bump legacy 15 MB default to 25 MB without overwriting custom limits.
+  await SITE_DB.prepare(
+    `UPDATE library_settings SET max_bytes = 26214400, updated_at = datetime('now')
+     WHERE id = 1 AND max_bytes = 15728640`,
   ).run();
 
   await SITE_DB.prepare(
@@ -745,5 +823,92 @@ export async function ensureSchema() {
     `ALTER TABLE articles ADD COLUMN snippet_webp_key TEXT`,
   );
 
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE stuff_members ADD COLUMN specialty_ro TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE stuff_members ADD COLUMN specialty_en TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE stuff_members ADD COLUMN specialty_bg TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(SITE_DB, `ALTER TABLE stuff_members ADD COLUMN role_id TEXT`);
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE stuff_members ADD COLUMN specialty_id TEXT`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE stuff_members ADD COLUMN doctor_title INTEGER NOT NULL DEFAULT 0`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE stuff_members ADD COLUMN college TEXT NOT NULL DEFAULT ''`,
+  );
+
+  // Drop slug (and its UNIQUE index) from named catalogs by rebuild.
+  for (const table of [
+    "stuff_roles",
+    "stuff_specialties",
+    "stuff_provided_services",
+  ] as const) {
+    await rebuildStuffNamedCatalogWithoutSlug(SITE_DB, table);
+  }
+
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO stuff_spotlight_settings
+       (id, autoplay, delay_ms, stop_on_hover)
+     VALUES (1, 1, 3000, 1)`,
+  ).run();
+
   schemaReadyEpoch = SCHEMA_EPOCH;
+}
+
+async function rebuildStuffNamedCatalogWithoutSlug(
+  db: D1Database,
+  table:
+    | "stuff_roles"
+    | "stuff_specialties"
+    | "stuff_provided_services",
+) {
+  const { results } = await db.prepare(`PRAGMA table_info(${table})`).all<{
+    name: string;
+  }>();
+  const cols = new Set((results ?? []).map((r) => r.name));
+  if (!cols.has("slug")) return;
+
+  const tmp = `${table}__no_slug`;
+  await db.prepare(`DROP TABLE IF EXISTS ${tmp}`).run();
+  await db
+    .prepare(
+      `CREATE TABLE ${tmp} (
+        id TEXT PRIMARY KEY,
+        position INTEGER NOT NULL DEFAULT 1,
+        name_ro TEXT NOT NULL DEFAULT '',
+        name_en TEXT NOT NULL DEFAULT '',
+        name_bg TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO ${tmp}
+         (id, position, name_ro, name_en, name_bg, enabled, created_at, updated_at)
+       SELECT id, position, name_ro, name_en, name_bg, enabled, created_at, updated_at
+       FROM ${table}`,
+    )
+    .run();
+  await db.prepare(`DROP TABLE ${table}`).run();
+  await db.prepare(`ALTER TABLE ${tmp} RENAME TO ${table}`).run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_${table}_position ON ${table}(position)`,
+    )
+    .run();
 }

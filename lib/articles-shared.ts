@@ -90,7 +90,15 @@ export type ArticlesCatalogDocument = {
     };
     enabled: boolean;
   }>;
+  /** Ordered article ids shown in the homepage snippets module. */
+  firstPage: string[];
   updatedAt: string;
+};
+
+export type ArticleFirstPageSlot = {
+  id: string;
+  article_id: string;
+  position: number;
 };
 
 export function emptyArticleSnippet(): ArticleSnippet {

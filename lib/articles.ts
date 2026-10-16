@@ -6,6 +6,7 @@ import {
   normalizeArticleDatetime,
   slugifyArticle,
   type ArticleCategory,
+  type ArticleFirstPageSlot,
   type ArticlePage,
   type ArticleRow,
   type ArticleSubcategory,
@@ -464,11 +465,61 @@ export async function replaceArticles(
   return listArticles();
 }
 
+export async function listArticleFirstPage(): Promise<ArticleFirstPageSlot[]> {
+  const { SITE_DB } = getEnv();
+  const rows = await SITE_DB.prepare(
+    `SELECT article_id, position FROM article_first_page ORDER BY position ASC`,
+  ).all<{ article_id: string; position: number }>();
+  return (rows.results ?? []).map((row) => ({
+    id: row.article_id,
+    article_id: row.article_id,
+    position: row.position,
+  }));
+}
+
+export async function replaceArticleFirstPage(
+  slots: Array<{ article_id: string; position: number }>,
+): Promise<ArticleFirstPageSlot[]> {
+  const { SITE_DB } = getEnv();
+  const articles = await listArticles();
+  const known = new Set(articles.map((a) => a.id));
+
+  const cleaned = [...slots]
+    .filter((s) => known.has(s.article_id))
+    .sort((a, b) => a.position - b.position)
+    .map((s, index) => ({
+      article_id: s.article_id,
+      position: index + 1,
+    }));
+
+  // Deduplicate by article_id keeping first occurrence in ordered list.
+  const seen = new Set<string>();
+  const unique = cleaned.filter((s) => {
+    if (seen.has(s.article_id)) return false;
+    seen.add(s.article_id);
+    return true;
+  });
+
+  await SITE_DB.prepare(`DELETE FROM article_first_page`).run();
+  for (const [index, slot] of unique.entries()) {
+    await SITE_DB.prepare(
+      `INSERT INTO article_first_page (article_id, position, updated_at)
+       VALUES (?, ?, datetime('now'))`,
+    )
+      .bind(slot.article_id, index + 1)
+      .run();
+  }
+
+  await publishArticlesCatalog();
+  return listArticleFirstPage();
+}
+
 export async function buildArticlesCatalogDocument(): Promise<ArticlesCatalogDocument> {
-  const [categories, subcategories, articles] = await Promise.all([
+  const [categories, subcategories, articles, firstPage] = await Promise.all([
     listArticleCategories(),
     listArticleSubcategories(),
     listArticles(),
+    listArticleFirstPage(),
   ]);
 
   return {
@@ -509,6 +560,7 @@ export async function buildArticlesCatalogDocument(): Promise<ArticlesCatalogDoc
       },
       enabled: a.enabled,
     })),
+    firstPage: firstPage.map((s) => s.article_id),
     updatedAt: new Date().toISOString(),
   };
 }

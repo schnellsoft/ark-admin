@@ -73,7 +73,7 @@ export function emptyLibrarySettings(): LibrarySettings {
     convertToWebp: true,
     jpegQuality: 0.85,
     webpQuality: 0.82,
-    maxBytes: 15 * 1024 * 1024,
+    maxBytes: 25 * 1024 * 1024,
     maxVideoBytes: 80 * 1024 * 1024,
     maxFilesPerBatch: 20,
   };

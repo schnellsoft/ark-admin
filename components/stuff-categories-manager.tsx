@@ -1,33 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, X } from "lucide-react";
 import { SndGrid, type SndColumn } from "@/components/snd-grid";
 import { MultilingualTextEditor } from "@/components/multilingual-text-editor";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/components/i18n-provider";
 import {
+  autoStuffCategorySlug,
   emptyStuffCategory,
-  emptyStuffSubcategory,
-  slugifyStuff,
   validateStuffCategoryDraft,
-  validateStuffSubcategoryDraft,
   type StuffCategory,
-  type StuffSubcategory,
 } from "@/lib/stuff-shared";
 import { emptyLocaleMap } from "@/lib/i18n";
 
 export function StuffCategoriesManager({
   initialCategories,
-  initialSubcategories,
+  onSaved,
 }: {
   initialCategories: StuffCategory[];
-  initialSubcategories: StuffSubcategory[];
+  onSaved?: (rows: StuffCategory[]) => void;
 }) {
   const { t, locale } = useI18n();
   const [categories, setCategories] = useState(initialCategories);
-  const [subcategories, setSubcategories] = useState(initialSubcategories);
-  const [filterCategoryId, setFilterCategoryId] = useState<string>("");
+  const [slugUnique, setSlugUnique] = useState<boolean | null>(null);
+  const [slugChecking, setSlugChecking] = useState(false);
 
   const catColumns = useMemo<SndColumn<StuffCategory>[]>(
     () => [
@@ -53,206 +51,166 @@ export function StuffCategoriesManager({
     [locale, t],
   );
 
-  const subColumns = useMemo<SndColumn<StuffSubcategory>[]>(
-    () => [
-      {
-        id: "name",
-        header: t("field.name"),
-        filterValue: (row) =>
-          `${row.name.ro} ${row.name.en} ${row.name.bg} ${row.slug}`,
-        cell: (row) => {
-          const parent = categories.find((c) => c.id === row.category_id);
-          return (
-            <span className="font-medium text-slate-200">
-              {row.name[locale] || row.name.ro || "—"}
-              <span className="ml-2 text-xs text-slate-500">
-                {parent?.name[locale] || parent?.slug || ""}
-              </span>
-            </span>
-          );
-        },
-      },
-    ],
-    [categories, locale, t],
+  return (
+    <div className="space-y-3">
+      <h2 className="text-lg text-teal-200">
+        {t("stuff.category") || "Category"}
+      </h2>
+      <SndGrid<StuffCategory>
+        gridId="stuff-categories"
+        rows={categories}
+        columns={catColumns}
+        onChange={setCategories}
+        onSave={async (rows) => {
+          const res = await fetch("/api/site/stuff/categories", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ categories: rows }),
+          });
+          const data = (await res.json()) as {
+            categories?: StuffCategory[];
+            error?: string;
+          };
+          if (!res.ok) throw new Error(data.error || t("grid.saveFailed"));
+          if (data.categories) {
+            setCategories(data.categories);
+            onSaved?.(data.categories);
+          }
+        }}
+        createEmpty={() => emptyStuffCategory()}
+        validateDraft={(draft) => {
+          const base = validateStuffCategoryDraft(draft);
+          if (base) return base;
+          if (slugUnique !== true) return t("stuff.slugUniqueBad");
+          return null;
+        }}
+        renderForm={({ draft, setDraft }) => (
+          <StuffCategoryFormFields
+            draft={draft}
+            setDraft={setDraft}
+            t={t}
+            slugUnique={slugUnique}
+            setSlugUnique={setSlugUnique}
+            slugChecking={slugChecking}
+            setSlugChecking={setSlugChecking}
+          />
+        )}
+      />
+    </div>
   );
+}
 
-  const visibleSubs = filterCategoryId
-    ? subcategories.filter((s) => s.category_id === filterCategoryId)
-    : subcategories;
+function StuffCategoryFormFields({
+  draft,
+  setDraft,
+  t,
+  slugUnique,
+  setSlugUnique,
+  slugChecking,
+  setSlugChecking,
+}: {
+  draft: Partial<StuffCategory> | null;
+  setDraft: (next: Partial<StuffCategory> | null) => void;
+  t: (key: string) => string;
+  slugUnique: boolean | null;
+  setSlugUnique: (v: boolean | null) => void;
+  slugChecking: boolean;
+  setSlugChecking: (v: boolean) => void;
+}) {
+  const slug = draft?.slug ?? "";
+  const excludeId = draft?.id;
+
+  useEffect(() => {
+    if (!slug.trim()) {
+      setSlugUnique(null);
+      return;
+    }
+    const handle = window.setTimeout(async () => {
+      setSlugChecking(true);
+      try {
+        const qs = new URLSearchParams({
+          slug: slug.trim(),
+          kind: "category",
+        });
+        if (excludeId) qs.set("excludeId", excludeId);
+        const res = await fetch(`/api/site/stuff/check-slug?${qs}`);
+        const data = (await res.json()) as { unique?: boolean };
+        setSlugUnique(Boolean(data.unique));
+      } catch {
+        setSlugUnique(null);
+      } finally {
+        setSlugChecking(false);
+      }
+    }, 280);
+    return () => window.clearTimeout(handle);
+  }, [slug, excludeId, setSlugChecking, setSlugUnique]);
+
+  if (!draft) return null;
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h2 className="text-lg text-teal-200">
-          {t("stuff.categories") || "Categories"}
-        </h2>
-        <SndGrid<StuffCategory>
-          gridId="stuff-categories"
-          rows={categories}
-          columns={catColumns}
-          onChange={setCategories}
-          onSave={async (rows) => {
-            const res = await fetch("/api/site/stuff/categories", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ categories: rows }),
-            });
-            const data = (await res.json()) as {
-              categories?: StuffCategory[];
-              error?: string;
-            };
-            if (!res.ok) throw new Error(data.error || t("grid.saveFailed"));
-            if (data.categories) setCategories(data.categories);
-          }}
-          createEmpty={() => emptyStuffCategory()}
-          validateDraft={validateStuffCategoryDraft}
-          renderForm={({ draft, setDraft }) =>
-            draft ? (
-              <div className="space-y-3">
-                <MultilingualTextEditor
-                  label={t("field.name")}
-                  value={draft.name ?? emptyLocaleMap()}
-                  onChange={(name) => {
-                    const slug =
-                      draft.slug?.trim() ||
-                      slugifyStuff(name.en || name.ro || name.bg);
-                    setDraft({ ...draft, name, slug });
-                  }}
-                />
-                <div className="space-y-1">
-                  <Label>Slug</Label>
-                  <Input
-                    value={draft.slug ?? ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, slug: e.target.value })
-                    }
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={draft.enabled !== false}
-                    onChange={(e) =>
-                      setDraft({ ...draft, enabled: e.target.checked })
-                    }
-                  />
-                  {t("field.enabled") || "Enabled"}
-                </label>
-              </div>
-            ) : null
-          }
-        />
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-lg text-teal-200">
-            {t("stuff.subcategories") || "Subcategories"}
-          </h2>
-          <div className="space-y-1">
-            <Label>
-              {t("stuff.filterCategory") || "Filter by category"}
-            </Label>
-            <select
-              className="h-9 rounded-md border border-slate-600 bg-slate-900 px-2 text-sm text-slate-100"
-              value={filterCategoryId}
-              onChange={(e) => setFilterCategoryId(e.target.value)}
-            >
-              <option value="">
-                {t("stuff.allCategories") || "All"}
-              </option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name[locale] || c.name.ro || c.slug}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <SndGrid<StuffSubcategory>
-          gridId="stuff-subcategories"
-          rows={visibleSubs}
-          columns={subColumns}
-          onChange={(next) => {
-            if (filterCategoryId) {
-              const others = subcategories.filter(
-                (s) => s.category_id !== filterCategoryId,
-              );
-              setSubcategories([...others, ...next]);
-            } else {
-              setSubcategories(next);
+    <div className="space-y-3">
+      <MultilingualTextEditor
+        label={t("field.name")}
+        value={draft.name ?? emptyLocaleMap()}
+        onChange={(name) => setDraft({ ...draft, name })}
+        onBlur={(name) => {
+          if (!draft.slug?.trim()) {
+            const hasName = Boolean(
+              name.en?.trim() || name.ro?.trim() || name.bg?.trim(),
+            );
+            if (hasName) {
+              setDraft({
+                ...draft,
+                name,
+                slug: autoStuffCategorySlug(name),
+              });
             }
-          }}
-          onSave={async (rows) => {
-            const payload = filterCategoryId
-              ? [
-                  ...subcategories.filter(
-                    (s) => s.category_id !== filterCategoryId,
-                  ),
-                  ...rows,
-                ]
-              : rows;
-            const res = await fetch("/api/site/stuff/subcategories", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ subcategories: payload }),
-            });
-            const data = (await res.json()) as {
-              subcategories?: StuffSubcategory[];
-              error?: string;
-            };
-            if (!res.ok) throw new Error(data.error || t("grid.saveFailed"));
-            if (data.subcategories) setSubcategories(data.subcategories);
-          }}
-          createEmpty={() =>
-            emptyStuffSubcategory(
-              filterCategoryId || categories[0]?.id || "",
-            )
           }
-          validateDraft={validateStuffSubcategoryDraft}
-          renderForm={({ draft, setDraft }) =>
-            draft ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label>{t("stuff.category") || "Category"}</Label>
-                  <select
-                    className="h-9 w-full rounded-md border border-slate-600 bg-slate-900 px-2 text-sm"
-                    value={draft.category_id ?? ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, category_id: e.target.value })
-                    }
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name[locale] || c.slug}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <MultilingualTextEditor
-                  label={t("field.name")}
-                  value={draft.name ?? emptyLocaleMap()}
-                  onChange={(name) => {
-                    const slug =
-                      draft.slug?.trim() ||
-                      slugifyStuff(name.en || name.ro || name.bg);
-                    setDraft({ ...draft, name, slug });
-                  }}
-                />
-                <div className="space-y-1">
-                  <Label>Slug</Label>
-                  <Input
-                    value={draft.slug ?? ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, slug: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            ) : null
+        }}
+      />
+      <div className="space-y-1">
+        <Label>{t("field.slug") || "Slug"}</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            className="flex-1"
+            value={draft.slug ?? ""}
+            required
+            onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+          />
+          {slugChecking ? (
+            <span className="text-xs text-slate-500 whitespace-nowrap">
+              {t("stuff.slugChecking")}
+            </span>
+          ) : slugUnique === true ? (
+            <span
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-green-500/40 bg-green-500/10 text-green-500"
+              title={t("stuff.slugUniqueOk")}
+              aria-label={t("stuff.slugUniqueOk")}
+            >
+              <Check className="h-5 w-5" strokeWidth={3} />
+            </span>
+          ) : slugUnique === false ? (
+            <span
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-rose-500/40 bg-rose-500/10 text-rose-500"
+              title={t("stuff.slugUniqueBad")}
+              aria-label={t("stuff.slugUniqueBad")}
+            >
+              <X className="h-5 w-5" strokeWidth={3} />
+            </span>
+          ) : null}
+        </div>
+        <p className="text-xs text-slate-500">{t("stuff.slugHint")}</p>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-slate-300">
+        <input
+          type="checkbox"
+          checked={draft.enabled !== false}
+          onChange={(e) =>
+            setDraft({ ...draft, enabled: e.target.checked })
           }
         />
-      </section>
+        {t("field.enabled") || "Enabled"}
+      </label>
     </div>
   );
 }

@@ -150,6 +150,57 @@ export async function listLibraryImages(): Promise<LibraryImage[]> {
   }));
 }
 
+export async function getLibraryImage(id: string): Promise<LibraryImage | null> {
+  const images = await listLibraryImages();
+  return images.find((img) => img.id === id) ?? null;
+}
+
+/** Attach / replace WebP + portrait800 siblings for an existing library image. */
+export async function attachLibraryImageVariants(input: {
+  id: string;
+  webp?: ArrayBuffer | null;
+  portrait800?: ArrayBuffer | null;
+}): Promise<LibraryImage> {
+  const { SITE_DB, MEDIA } = getEnv();
+  const existing = await getLibraryImage(input.id);
+  if (!existing) throw new Error("Image not found");
+  if (existing.kind === "video") {
+    throw new Error("Variants are only supported for images");
+  }
+
+  let webpKey = existing.webp_key;
+  let portrait800Key = existing.portrait_800_key;
+  let bytes = existing.bytes;
+
+  if (input.webp && input.webp.byteLength > 0) {
+    webpKey = `${LIBRARY_MEDIA_PREFIX}${input.id}.webp`;
+    await MEDIA.put(webpKey, input.webp, {
+      httpMetadata: { contentType: "image/webp" },
+    });
+    bytes += input.webp.byteLength;
+  }
+  if (input.portrait800 && input.portrait800.byteLength > 0) {
+    portrait800Key = `${LIBRARY_MEDIA_PREFIX}${input.id}-p800.webp`;
+    await MEDIA.put(portrait800Key, input.portrait800, {
+      httpMetadata: { contentType: "image/webp" },
+    });
+    bytes += input.portrait800.byteLength;
+  }
+
+  await SITE_DB.prepare(
+    `UPDATE library_images
+     SET webp_key = ?, portrait_800_key = ?, bytes = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+  )
+    .bind(webpKey, portrait800Key, bytes, input.id)
+    .run();
+
+  await syncLibraryJson();
+  const updated = await getLibraryImage(input.id);
+  if (!updated) throw new Error("Failed to update image variants");
+  return updated;
+}
+
 export async function syncLibraryJson(
   settings?: LibrarySettings,
   categories?: LibraryCategory[],

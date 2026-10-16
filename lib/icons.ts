@@ -33,6 +33,9 @@ export async function isIconNameUnique(name: string, excludeId?: string) {
   return !row;
 }
 
+/** Stable site content key (synced by ark-site). Also mirrored under published/latest. */
+export const ICONS_CONTENT_KEY = "icons/icons.json";
+
 export async function syncIconsJson(icons: IconRow[]) {
   const { CONTENT } = getEnv();
   const payload = JSON.stringify(
@@ -47,9 +50,9 @@ export async function syncIconsJson(icons: IconRow[]) {
     null,
     2,
   );
-  await CONTENT.put("published/latest/icons.json", payload, {
-    httpMetadata: { contentType: "application/json" },
-  });
+  const meta = { httpMetadata: { contentType: "application/json" } };
+  await CONTENT.put(ICONS_CONTENT_KEY, payload, meta);
+  await CONTENT.put("published/latest/icons.json", payload, meta);
 }
 
 /** Remove icon name / svg occurrences from draft JSON and published latest JSON packs. */
