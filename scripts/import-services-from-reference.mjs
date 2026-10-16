@@ -432,16 +432,18 @@ try {
     `INSERT OR IGNORE INTO library_categories (id, name, position, is_system)
      VALUES ('services-articles', 'Services articles', 90, 0);`,
   );
+  let libPos = 1;
   for (const img of libraryImages) {
     statements.push(
       `INSERT INTO library_images (id, name, alt, kind, master_key, master_content_type, webp_key, width, height, bytes, position)
-       VALUES ('${sqlEscape(img.id)}', '${sqlEscape(img.name)}', '${sqlEscape(img.alt)}', 'image', '${sqlEscape(img.masterKey)}', 'image/jpeg', '${sqlEscape(img.webpKey)}', ${img.width}, ${img.height}, ${img.bytes}, 1)
+       VALUES ('${sqlEscape(img.id)}', '${sqlEscape(img.name)}', '${sqlEscape(img.alt)}', 'image', '${sqlEscape(img.masterKey)}', 'image/jpeg', '${sqlEscape(img.webpKey)}', ${img.width}, ${img.height}, ${img.bytes}, ${libPos++})
        ON CONFLICT(id) DO UPDATE SET
          master_key = excluded.master_key,
          webp_key = excluded.webp_key,
          width = excluded.width,
          height = excluded.height,
          bytes = excluded.bytes,
+         position = excluded.position,
          updated_at = datetime('now');`,
     );
     statements.push(
@@ -500,6 +502,19 @@ try {
       "--content-type",
       "image/webp",
     ]);
+  }
+
+  // wrangler --local writes `.wrangler/state`; vinext serves `.cloudflare/state`
+  if (!remote) {
+    console.log("Syncing local R2 library objects into vinext persist…");
+    const sync = spawnSync(
+      "node",
+      [join(root, "scripts/sync-wrangler-r2-to-vinext.mjs"), "--prefix=library/"],
+      { cwd: root, encoding: "utf8", stdio: "inherit" },
+    );
+    if (sync.status !== 0) {
+      console.warn("R2 sync to vinext persist failed — library thumbs may be blank until synced.");
+    }
   }
 
   // Publish catalog + pages

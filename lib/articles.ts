@@ -2,9 +2,11 @@ import { getEnv } from "./env";
 import { emptyLocaleMap } from "./i18n";
 import {
   ARTICLES_CONTENT_KEY,
+  emptyArticleSnippet,
   normalizeArticleDatetime,
   slugifyArticle,
   type ArticleCategory,
+  type ArticlePage,
   type ArticleRow,
   type ArticleSubcategory,
   type ArticlesCatalogDocument,
@@ -44,6 +46,16 @@ type ArticleDb = {
   category_id: string | null;
   subcategory_id: string | null;
   published_at: string;
+  snippet_title_ro?: string;
+  snippet_title_en?: string;
+  snippet_title_bg?: string;
+  snippet_text_ro?: string;
+  snippet_text_en?: string;
+  snippet_text_bg?: string;
+  snippet_date?: string;
+  snippet_library_id?: string | null;
+  snippet_master_key?: string;
+  snippet_webp_key?: string | null;
   enabled: number;
 };
 
@@ -80,8 +92,47 @@ function mapArticle(row: ArticleDb): ArticleRow {
     category_id: row.category_id,
     subcategory_id: row.subcategory_id,
     datetime: row.published_at ?? "",
+    snippet: {
+      title: {
+        ro: row.snippet_title_ro ?? "",
+        en: row.snippet_title_en ?? "",
+        bg: row.snippet_title_bg ?? "",
+      },
+      text: {
+        ro: row.snippet_text_ro ?? "",
+        en: row.snippet_text_en ?? "",
+        bg: row.snippet_text_bg ?? "",
+      },
+      date: row.snippet_date ?? "",
+      library_id: row.snippet_library_id ?? null,
+      master_key: row.snippet_master_key ?? "",
+      webp_key: row.snippet_webp_key ?? null,
+    },
     enabled: Boolean(row.enabled),
   };
+}
+
+export async function isArticleSlugUnique(
+  slug: string,
+  excludeId?: string,
+): Promise<boolean> {
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized) return false;
+  const { SITE_DB } = getEnv();
+  if (excludeId) {
+    const row = await SITE_DB.prepare(
+      `SELECT id FROM articles WHERE lower(slug) = ? AND id != ? LIMIT 1`,
+    )
+      .bind(normalized, excludeId)
+      .first<{ id: string }>();
+    return !row;
+  }
+  const row = await SITE_DB.prepare(
+    `SELECT id FROM articles WHERE lower(slug) = ? LIMIT 1`,
+  )
+    .bind(normalized)
+    .first<{ id: string }>();
+  return !row;
 }
 
 export async function listArticleCategories(): Promise<ArticleCategory[]> {
@@ -113,14 +164,77 @@ export async function listArticleSubcategories(
   return (results ?? []).map(mapSubcategory);
 }
 
+const ARTICLE_SELECT = `SELECT id, position, slug, title_ro, title_en, title_bg, category_id, subcategory_id,
+            published_at,
+            snippet_title_ro, snippet_title_en, snippet_title_bg,
+            snippet_text_ro, snippet_text_en, snippet_text_bg,
+            snippet_date, snippet_library_id, snippet_master_key, snippet_webp_key,
+            enabled
+     FROM articles`;
+
 export async function listArticles(): Promise<ArticleRow[]> {
   const { SITE_DB } = getEnv();
   const { results } = await SITE_DB.prepare(
-    `SELECT id, position, slug, title_ro, title_en, title_bg, category_id, subcategory_id,
-            published_at, enabled
-     FROM articles ORDER BY position ASC`,
+    `${ARTICLE_SELECT} ORDER BY position ASC`,
   ).all<ArticleDb>();
   return (results ?? []).map(mapArticle);
+}
+
+export async function getArticle(id: string): Promise<ArticleRow | null> {
+  const { SITE_DB } = getEnv();
+  const row = await SITE_DB.prepare(`${ARTICLE_SELECT} WHERE id = ?`)
+    .bind(id)
+    .first<ArticleDb>();
+  return row ? mapArticle(row) : null;
+}
+
+type ArticlePageDb = {
+  article_id: string;
+  body_html_ro: string;
+  body_html_en: string;
+  body_html_bg: string;
+};
+
+export async function getArticlePage(articleId: string): Promise<ArticlePage> {
+  const { SITE_DB } = getEnv();
+  const row = await SITE_DB.prepare(
+    `SELECT article_id, body_html_ro, body_html_en, body_html_bg
+     FROM article_pages WHERE article_id = ?`,
+  )
+    .bind(articleId)
+    .first<ArticlePageDb>();
+  if (!row) {
+    return {
+      article_id: articleId,
+      body: emptyLocaleMap(),
+    };
+  }
+  return {
+    article_id: row.article_id,
+    body: {
+      ro: row.body_html_ro ?? "",
+      en: row.body_html_en ?? "",
+      bg: row.body_html_bg ?? "",
+    },
+  };
+}
+
+export async function saveArticlePage(page: ArticlePage): Promise<ArticlePage> {
+  const { SITE_DB } = getEnv();
+  const body = page.body ?? emptyLocaleMap();
+  await SITE_DB.prepare(
+    `INSERT INTO article_pages
+       (article_id, body_html_ro, body_html_en, body_html_bg, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(article_id) DO UPDATE SET
+       body_html_ro = excluded.body_html_ro,
+       body_html_en = excluded.body_html_en,
+       body_html_bg = excluded.body_html_bg,
+       updated_at = datetime('now')`,
+  )
+    .bind(page.article_id, body.ro ?? "", body.en ?? "", body.bg ?? "")
+    .run();
+  return getArticlePage(page.article_id);
 }
 
 export async function replaceArticleCategories(
@@ -242,17 +356,39 @@ export async function replaceArticles(
 ): Promise<ArticleRow[]> {
   const { SITE_DB } = getEnv();
   const normalized = articles
-    .map((a, i) => ({
-      ...a,
-      position: i + 1,
-      slug: a.slug.trim() || slugifyArticle(a.title.en || a.title.ro || a.title.bg),
-      title: a.title ?? emptyLocaleMap(),
-      category_id: a.category_id || null,
-      subcategory_id: a.subcategory_id || null,
-      datetime: normalizeArticleDatetime(a.datetime ?? ""),
-      enabled: a.enabled !== false,
-    }))
+    .map((a, i) => {
+      const snippet = a.snippet ?? emptyArticleSnippet();
+      return {
+        ...a,
+        position: i + 1,
+        slug:
+          a.slug.trim() ||
+          slugifyArticle(a.title.en || a.title.ro || a.title.bg),
+        title: a.title ?? emptyLocaleMap(),
+        category_id: a.category_id || null,
+        subcategory_id: a.subcategory_id || null,
+        datetime: normalizeArticleDatetime(a.datetime ?? ""),
+        snippet: {
+          title: snippet.title ?? emptyLocaleMap(),
+          text: snippet.text ?? emptyLocaleMap(),
+          date: normalizeArticleDatetime(snippet.date ?? ""),
+          library_id: snippet.library_id || null,
+          master_key: snippet.master_key ?? "",
+          webp_key: snippet.webp_key || null,
+        },
+        enabled: a.enabled !== false,
+      };
+    })
     .filter((a) => a.id);
+
+  const slugOwners = new Map<string, string>();
+  for (const a of normalized) {
+    const key = a.slug.toLowerCase();
+    if (slugOwners.has(key)) {
+      throw new Error(`Duplicate article slug: ${a.slug}`);
+    }
+    slugOwners.set(key, a.id);
+  }
 
   const existing = await listArticles();
   const keep = new Set(normalized.map((a) => a.id));
@@ -271,8 +407,12 @@ export async function replaceArticles(
     await SITE_DB.prepare(
       `INSERT INTO articles
          (id, position, slug, title_ro, title_en, title_bg, category_id, subcategory_id,
-          published_at, enabled, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          published_at,
+          snippet_title_ro, snippet_title_en, snippet_title_bg,
+          snippet_text_ro, snippet_text_en, snippet_text_bg,
+          snippet_date, snippet_library_id, snippet_master_key, snippet_webp_key,
+          enabled, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(id) DO UPDATE SET
          position = excluded.position,
          slug = excluded.slug,
@@ -282,6 +422,16 @@ export async function replaceArticles(
          category_id = excluded.category_id,
          subcategory_id = excluded.subcategory_id,
          published_at = excluded.published_at,
+         snippet_title_ro = excluded.snippet_title_ro,
+         snippet_title_en = excluded.snippet_title_en,
+         snippet_title_bg = excluded.snippet_title_bg,
+         snippet_text_ro = excluded.snippet_text_ro,
+         snippet_text_en = excluded.snippet_text_en,
+         snippet_text_bg = excluded.snippet_text_bg,
+         snippet_date = excluded.snippet_date,
+         snippet_library_id = excluded.snippet_library_id,
+         snippet_master_key = excluded.snippet_master_key,
+         snippet_webp_key = excluded.snippet_webp_key,
          enabled = excluded.enabled,
          updated_at = datetime('now')`,
     )
@@ -295,6 +445,16 @@ export async function replaceArticles(
         a.category_id,
         a.subcategory_id,
         a.datetime,
+        a.snippet.title.ro,
+        a.snippet.title.en,
+        a.snippet.title.bg,
+        a.snippet.text.ro,
+        a.snippet.text.en,
+        a.snippet.text.bg,
+        a.snippet.date,
+        a.snippet.library_id,
+        a.snippet.master_key,
+        a.snippet.webp_key,
         a.enabled ? 1 : 0,
       )
       .run();
@@ -337,6 +497,16 @@ export async function buildArticlesCatalogDocument(): Promise<ArticlesCatalogDoc
       categoryId: a.category_id,
       subcategoryId: a.subcategory_id,
       datetime: a.datetime || null,
+      snippet: {
+        title: a.snippet.title,
+        text: a.snippet.text,
+        date: a.snippet.date || null,
+        image: {
+          libraryId: a.snippet.library_id,
+          master: a.snippet.master_key || null,
+          webp: a.snippet.webp_key,
+        },
+      },
       enabled: a.enabled,
     })),
     updatedAt: new Date().toISOString(),

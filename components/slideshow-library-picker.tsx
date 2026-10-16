@@ -9,7 +9,9 @@ import type { LibraryCategory, LibraryImage } from "@/lib/library-shared";
 import { cn } from "@/lib/utils";
 
 function libraryFileUrl(key: string) {
-  return `/api/site/media/file?key=${encodeURIComponent(key)}`;
+  const path = `/api/site/media/file?key=${encodeURIComponent(key)}`;
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
 }
 
 export function SlideshowLibraryPicker({
@@ -19,6 +21,10 @@ export function SlideshowLibraryPicker({
   categories,
   onSelect,
   busy,
+  title,
+  hint,
+  confirmLabel,
+  confirmingLabel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,6 +32,10 @@ export function SlideshowLibraryPicker({
   categories: LibraryCategory[];
   onSelect: (asset: LibraryImage) => void;
   busy?: boolean;
+  title?: string;
+  hint?: string;
+  confirmLabel?: string;
+  confirmingLabel?: string;
 }) {
   const { t } = useI18n();
   const [search, setSearch] = useState("");
@@ -51,7 +61,7 @@ export function SlideshowLibraryPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="slideshow-library-picker-title"
@@ -59,23 +69,25 @@ export function SlideshowLibraryPicker({
         if (e.target === e.currentTarget && !busy) onClose();
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-slate-800 p-4">
+      <div className="flex h-[min(90vh,44rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 p-4">
           <div>
             <h2
               id="slideshow-library-picker-title"
               className="text-lg font-medium text-teal-200"
             >
-              {t("slideshow.importLibrary")}
+              {title ?? t("slideshow.importLibrary")}
             </h2>
-            <p className="text-sm text-slate-400">{t("slideshow.importLibraryHint")}</p>
+            <p className="text-sm text-slate-400">
+              {hint ?? t("slideshow.importLibraryHint")}
+            </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
             {t("slideshow.close")}
           </Button>
         </div>
 
-        <div className="grid gap-3 border-b border-slate-800 p-4 sm:grid-cols-[1fr_12rem]">
+        <div className="grid shrink-0 gap-3 border-b border-slate-800 p-4 sm:grid-cols-[1fr_12rem]">
           <div className="space-y-1">
             <Label htmlFor="slideshow-lib-search">{t("grid.search")}</Label>
             <Input
@@ -115,7 +127,7 @@ export function SlideshowLibraryPicker({
                   <button
                     key={asset.id}
                     type="button"
-                    disabled={busy}
+                    disabled={busy || !previewKey}
                     onClick={() => setSelectedId(asset.id)}
                     className={cn(
                       "overflow-hidden rounded-lg border text-left transition",
@@ -124,7 +136,7 @@ export function SlideshowLibraryPicker({
                         : "border-slate-700 hover:border-slate-500",
                     )}
                   >
-                    <div className="aspect-video bg-black">
+                    <div className="relative aspect-video bg-slate-900">
                       {asset.kind === "video" ? (
                         <video
                           src={libraryFileUrl(asset.master_key)}
@@ -133,14 +145,28 @@ export function SlideshowLibraryPicker({
                           playsInline
                           preload="metadata"
                         />
-                      ) : (
+                      ) : previewKey ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={libraryFileUrl(previewKey)}
                           alt={asset.alt || asset.name}
                           className="size-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback instanceof HTMLElement) {
+                              fallback.hidden = false;
+                            }
+                          }}
                         />
-                      )}
+                      ) : null}
+                      <div
+                        hidden
+                        className="absolute inset-0 grid place-items-center text-xs text-slate-500"
+                      >
+                        {asset.name}
+                      </div>
                     </div>
                     <div className="space-y-0.5 p-2">
                       <p className="truncate text-sm text-slate-100">{asset.name}</p>
@@ -158,7 +184,7 @@ export function SlideshowLibraryPicker({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-800 p-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-800 p-4">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             {t("slideshow.cancel")}
           </Button>
@@ -169,7 +195,9 @@ export function SlideshowLibraryPicker({
               if (selected) onSelect(selected);
             }}
           >
-            {busy ? t("slideshow.importing") : t("slideshow.useSelected")}
+            {busy
+              ? (confirmingLabel ?? t("slideshow.importing"))
+              : (confirmLabel ?? t("slideshow.useSelected"))}
           </Button>
         </div>
       </div>

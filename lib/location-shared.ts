@@ -3,6 +3,7 @@ export const LOCATION_CONTENT_KEY = "location/location.json";
 export type LocationSettings = {
   latitude: string;
   longitude: string;
+  address: string;
   google_maps_key: string;
   building_library_id: string | null;
   building_master_key: string;
@@ -12,6 +13,7 @@ export type LocationSettings = {
 export type LocationDocument = {
   latitude: string;
   longitude: string;
+  address: string;
   googleMapsKey: string;
   building: {
     libraryId: string | null;
@@ -25,6 +27,7 @@ export function emptyLocationSettings(): LocationSettings {
   return {
     latitude: "",
     longitude: "",
+    address: "",
     google_maps_key: "",
     building_library_id: null,
     building_master_key: "",

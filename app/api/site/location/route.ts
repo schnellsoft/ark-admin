@@ -7,6 +7,7 @@ import { z } from "zod";
 const locationSchema = z.object({
   latitude: z.string(),
   longitude: z.string(),
+  address: z.string().default(""),
   google_maps_key: z.string(),
   building_library_id: z.string().nullable().optional(),
   building_master_key: z.string().default(""),

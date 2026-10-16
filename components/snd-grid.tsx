@@ -68,6 +68,8 @@ export function SndGrid<T extends { id: string; position: number }>({
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
+  /** Two-step delete — avoid window.confirm (blocked in some embedded browsers). */
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(pageSizeKey(gridId));
@@ -101,13 +103,17 @@ export function SndGrid<T extends { id: string; position: number }>({
   const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   function startCreate() {
+    setPendingDeleteId(null);
     setMode("create");
     setDraft(createEmpty());
   }
 
   function startEdit(row: T) {
+    setPendingDeleteId(null);
     setMode("edit");
-    setDraft({ ...row });
+    // Deep-ish clone so nested maps (e.g. title/name LocaleMap) are editable
+    // without aliasing the grid row object.
+    setDraft(structuredClone(row));
     setSelectedId(row.id);
   }
 
@@ -120,12 +126,13 @@ export function SndGrid<T extends { id: string; position: number }>({
     }
     if (mode === "create") {
       const id = crypto.randomUUID();
-      const position = rows.length + 1;
-      const next = normalizePositions([
+      // New rows land at position 1; existing rows shift down.
+      const next = renumberByOrder([
+        { ...(draft as T), id, position: 1 },
         ...rows,
-        { ...(draft as T), id, position },
       ]) as T[];
       onChange(next);
+      setPage(1);
     } else if (draft.id) {
       const next = rows.map((r) => (r.id === draft.id ? ({ ...r, ...draft } as T) : r));
       onChange(normalizePositions(next) as T[]);
@@ -134,11 +141,24 @@ export function SndGrid<T extends { id: string; position: number }>({
     setStatus("");
   }
 
-  function deleteRow(row: T) {
-    if (!window.confirm(`${t("grid.delete")} “${row.id}”?`)) return;
-    const next = normalizePositions(rows.filter((r) => r.id !== row.id)) as T[];
+  function requestDelete(row: T) {
+    setPendingDeleteId(row.id);
+    setSelectedId(row.id);
+    setStatus("");
+  }
+
+  function cancelDelete() {
+    setPendingDeleteId(null);
+  }
+
+  function confirmDelete(row: T) {
+    const id = row.id;
+    const next = renumberByOrder(rows.filter((r) => r.id !== id)) as T[];
     onChange(next);
-    if (selectedId === row.id) setSelectedId(null);
+    setPendingDeleteId(null);
+    if (selectedId === id) setSelectedId(null);
+    if (draft?.id === id) setDraft(null);
+    setStatus("");
   }
 
   function applyReposition() {
@@ -213,7 +233,7 @@ export function SndGrid<T extends { id: string; position: number }>({
           <Button type="button" variant="secondary" onClick={startCreate}>
             {t("grid.add")}
           </Button>
-          <Button type="button" onClick={save} disabled={pending}>
+          <Button type="button" onClick={() => void save()} disabled={pending}>
             {pending ? t("grid.saving") : t("grid.save")}
           </Button>
         </div>
@@ -231,7 +251,14 @@ export function SndGrid<T extends { id: string; position: number }>({
             <Button type="button" onClick={submitDraft}>
               {mode === "create" ? t("grid.add") : t("grid.save")}
             </Button>
-            <Button type="button" variant="outline" onClick={() => setDraft(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDraft(null);
+                setStatus("");
+              }}
+            >
               {t("grid.cancel")}
             </Button>
           </div>
@@ -272,27 +299,63 @@ export function SndGrid<T extends { id: string; position: number }>({
                     <TableCell key={col.id}>{col.cell(row)}</TableCell>
                   ))}
                   <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          startEdit(row);
-                        }}
-                      >
-                        {t("grid.edit")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteRow(row);
-                        }}
-                      >
-                        {t("grid.delete")}
-                      </Button>
+                    <div className="flex flex-wrap gap-1">
+                      {pendingDeleteId === row.id ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              confirmDelete(row);
+                            }}
+                          >
+                            {t("grid.confirmDelete")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              cancelDelete();
+                            }}
+                          >
+                            {t("grid.cancel")}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setPendingDeleteId(null);
+                              startEdit(row);
+                            }}
+                          >
+                            {t("grid.edit")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              requestDelete(row);
+                            }}
+                          >
+                            {t("grid.delete")}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

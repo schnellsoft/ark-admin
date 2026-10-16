@@ -1,25 +1,31 @@
-import { Suspense } from "react";
 import { ArticlesManager } from "@/components/articles-manager";
 import {
   listArticleCategories,
   listArticleSubcategories,
   listArticles,
 } from "@/lib/articles";
+import {
+  listLibraryCategories,
+  listLibraryImages,
+} from "@/lib/library";
 
 export default async function ArticlesPage() {
-  const [categories, subcategories, articles] = await Promise.all([
-    listArticleCategories(),
-    listArticleSubcategories(),
-    listArticles(),
-  ]);
+  const [categories, subcategories, articles, libraryAssets, libraryCategories] =
+    await Promise.all([
+      listArticleCategories(),
+      listArticleSubcategories(),
+      listArticles(),
+      listLibraryImages(),
+      listLibraryCategories(),
+    ]);
 
   return (
-    <Suspense fallback={<p className="text-slate-400">…</p>}>
-      <ArticlesManager
-        categories={categories}
-        subcategories={subcategories}
-        articles={articles}
-      />
-    </Suspense>
+    <ArticlesManager
+      categories={categories}
+      subcategories={subcategories}
+      articles={articles}
+      libraryAssets={libraryAssets}
+      libraryCategories={libraryCategories}
+    />
   );
 }

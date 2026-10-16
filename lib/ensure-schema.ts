@@ -2,7 +2,7 @@ import { DEFAULT_AI_SETTINGS_JSON } from "./ai-defaults";
 import { getEnv } from "./env";
 
 /** Bump when additive migrations must re-run on already-booted local DBs. */
-const SCHEMA_EPOCH = 3;
+const SCHEMA_EPOCH = 6;
 let schemaReadyEpoch = 0;
 
 const USERS_SCHEMA = `
@@ -135,6 +135,20 @@ CREATE TABLE IF NOT EXISTS header_icons (
 );
 
 CREATE INDEX IF NOT EXISTS idx_header_icons_position ON header_icons(position);
+
+CREATE TABLE IF NOT EXISTS footer_icons (
+  id TEXT PRIMARY KEY,
+  icon_id TEXT,
+  name TEXT NOT NULL DEFAULT '',
+  label TEXT NOT NULL DEFAULT '',
+  aria_label TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '#',
+  position INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_footer_icons_position ON footer_icons(position);
 
 CREATE TABLE IF NOT EXISTS header_menu_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -405,10 +419,18 @@ CREATE TABLE IF NOT EXISTS location_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   latitude TEXT NOT NULL DEFAULT '',
   longitude TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT '',
   google_maps_key TEXT NOT NULL DEFAULT '',
   building_library_id TEXT,
   building_master_key TEXT NOT NULL DEFAULT '',
   building_webp_key TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS contact_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  phone TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
@@ -456,6 +478,16 @@ CREATE TABLE IF NOT EXISTS articles (
   category_id TEXT,
   subcategory_id TEXT,
   published_at TEXT NOT NULL DEFAULT '',
+  snippet_title_ro TEXT NOT NULL DEFAULT '',
+  snippet_title_en TEXT NOT NULL DEFAULT '',
+  snippet_title_bg TEXT NOT NULL DEFAULT '',
+  snippet_text_ro TEXT NOT NULL DEFAULT '',
+  snippet_text_en TEXT NOT NULL DEFAULT '',
+  snippet_text_bg TEXT NOT NULL DEFAULT '',
+  snippet_date TEXT NOT NULL DEFAULT '',
+  snippet_library_id TEXT,
+  snippet_master_key TEXT NOT NULL DEFAULT '',
+  snippet_webp_key TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -642,6 +674,13 @@ export async function ensureSchema() {
   await SITE_DB.prepare(
     `INSERT OR IGNORE INTO location_settings (id) VALUES (1)`,
   ).run();
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO contact_settings (id) VALUES (1)`,
+  ).run();
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE location_settings ADD COLUMN address TEXT NOT NULL DEFAULT ''`,
+  );
 
   await tryAlter(
     SITE_DB,
@@ -664,6 +703,46 @@ export async function ensureSchema() {
   await tryAlter(
     SITE_DB,
     `ALTER TABLE articles ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_title_ro TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_title_en TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_title_bg TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_text_ro TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_text_en TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_text_bg TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_date TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_library_id TEXT`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_master_key TEXT NOT NULL DEFAULT ''`,
+  );
+  await tryAlter(
+    SITE_DB,
+    `ALTER TABLE articles ADD COLUMN snippet_webp_key TEXT`,
   );
 
   schemaReadyEpoch = SCHEMA_EPOCH;

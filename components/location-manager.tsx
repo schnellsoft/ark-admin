@@ -156,6 +156,18 @@ export function LocationManager({
         </div>
 
         <div className="space-y-1">
+          <Label htmlFor="loc-address">
+            {t("location.address") || "Address"}
+          </Label>
+          <Input
+            id="loc-address"
+            value={form.address}
+            onChange={(e) => setForm({ ...form, address: e.target.value })}
+            placeholder={t("location.addressPlaceholder") || "Street, city, country"}
+          />
+        </div>
+
+        <div className="space-y-1">
           <Label htmlFor="loc-maps-key">
             {t("location.googleMapsKey") || "Google Maps key"}
           </Label>

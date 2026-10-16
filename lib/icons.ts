@@ -120,7 +120,12 @@ export async function saveIconsBulk(icons: IconRow[]) {
 
   for (const old of existing) {
     if (!nextIds.has(old.id)) {
-      await scrubIconFromJsonFiles(old.name, old.svg);
+      // Scrub is best-effort — never block removing the icon from D1.
+      try {
+        await scrubIconFromJsonFiles(old.name, old.svg);
+      } catch (err) {
+        console.error("scrubIconFromJsonFiles failed", old.name, err);
+      }
       await SITE_DB.prepare(`DELETE FROM icons WHERE id = ?`).bind(old.id).run();
     }
   }

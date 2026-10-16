@@ -1,35 +1,30 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { listArticles } from "@/lib/articles";
+import { ArticlePageEditor } from "@/components/article-page-editor";
+import { getArticle, getArticlePage } from "@/lib/articles";
+import {
+  listLibraryCategories,
+  listLibraryImages,
+} from "@/lib/library";
 
-export default async function ArticlePageEditorStub({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+type Props = { params: Promise<{ id: string }> };
+
+export default async function ArticlePageEditPage({ params }: Props) {
   const { id } = await params;
-  const articles = await listArticles();
-  const article = articles.find((a) => a.id === id);
+  const article = await getArticle(id);
   if (!article) notFound();
 
-  const title =
-    article.title.en || article.title.ro || article.title.bg || article.slug;
+  const [page, libraryAssets, libraryCategories] = await Promise.all([
+    getArticlePage(id),
+    listLibraryImages(),
+    listLibraryCategories(),
+  ]);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-sm text-slate-500">
-          <Link href="/site/articles" className="text-teal-300 hover:underline">
-            ← Articles
-          </Link>
-        </p>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">
-          {title}
-        </h1>
-        <p className="text-slate-400">
-          HTML page editor will be implemented in the next pass.
-        </p>
-      </div>
-    </div>
+    <ArticlePageEditor
+      article={article}
+      initialPage={page}
+      libraryAssets={libraryAssets}
+      libraryCategories={libraryCategories}
+    />
   );
 }

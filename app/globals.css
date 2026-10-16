@@ -34,3 +34,21 @@ select,
 button {
   color-scheme: dark;
 }
+
+/* Article TinyMCE ribbon editor — dark admin chrome */
+.article-html-editor {
+  min-height: calc(100vh - 11rem);
+}
+
+.article-html-editor .tox-tinymce {
+  border-radius: 0.75rem;
+  border-color: #334155 !important;
+}
+
+.article-html-editor .tox .tox-edit-area__iframe {
+  background: #0f172a;
+}
+
+.article-html-editor .tox-statusbar {
+  border-top-color: #334155 !important;
+}

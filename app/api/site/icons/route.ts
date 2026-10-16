@@ -4,7 +4,8 @@ import { listIcons, saveIconsBulk, type IconRow } from "@/lib/icons";
 import { z } from "zod";
 
 const iconSchema = z.object({
-  id: z.string().uuid(),
+  // Slug / cat-* ids from services import are valid; new rows use UUIDs.
+  id: z.string().min(1),
   name: z.string().min(1).max(120),
   svg: z.string().min(1).max(200000),
   position: z.number().int().positive(),
@@ -29,7 +30,10 @@ export async function PUT(request: Request) {
     await requireUser();
     const parsed = bodySchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+      const detail = parsed.error.issues
+        .map((i) => `${i.path.join(".") || "body"}: ${i.message}`)
+        .join("; ");
+      return NextResponse.json({ error: detail || parsed.error.message }, { status: 400 });
     }
     const icons = await saveIconsBulk(parsed.data.icons as IconRow[]);
     return NextResponse.json({ icons });

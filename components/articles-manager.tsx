@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 import { ArticlesCategoriesManager } from "@/components/articles-categories-manager";
 import { ArticlesGridManager } from "@/components/articles-grid-manager";
@@ -10,12 +10,15 @@ import type {
   ArticleRow,
   ArticleSubcategory,
 } from "@/lib/articles-shared";
+import type { LibraryCategory, LibraryImage } from "@/lib/library-shared";
 import { cn } from "@/lib/utils";
 
 type Tab = "list" | "categories";
 
-function parseTab(raw: string | null): Tab {
-  if (raw === "categories" || raw === "list") return raw;
+function tabFromPath(pathname: string): Tab {
+  if (pathname.endsWith("/categories") || pathname.includes("/categories/")) {
+    return "categories";
+  }
   return "list";
 }
 
@@ -23,29 +26,43 @@ export function ArticlesManager({
   categories,
   subcategories,
   articles,
+  libraryAssets,
+  libraryCategories,
 }: {
   categories: ArticleCategory[];
   subcategories: ArticleSubcategory[];
   articles: ArticleRow[];
+  libraryAssets: LibraryImage[];
+  libraryCategories: LibraryCategory[];
 }) {
   const { t } = useI18n();
-  const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>(() => parseTab(searchParams.get("tab")));
+  const pathname = usePathname();
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>(() => tabFromPath(pathname));
 
   useEffect(() => {
-    setTab(parseTab(searchParams.get("tab")));
-  }, [searchParams]);
+    setTab(tabFromPath(pathname));
+  }, [pathname]);
 
-  const tabs: Array<{ id: Tab; label: string }> = [
+  const tabs: Array<{ id: Tab; label: string; href: string }> = [
     {
       id: "list",
       label: t("articles.tabList") || "Articles list",
+      href: "/site/articles",
     },
     {
       id: "categories",
       label: t("articles.tabCategories") || "Articles categories",
+      href: "/site/articles/categories",
     },
   ];
+
+  function selectTab(item: { id: Tab; href: string }) {
+    setTab(item.id);
+    if (pathname !== item.href) {
+      router.push(item.href);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -61,13 +78,13 @@ export function ArticlesManager({
           <button
             key={item.id}
             type="button"
+            onClick={() => selectTab(item)}
             className={cn(
               "rounded-t-md px-3 py-2 text-sm transition-colors",
               tab === item.id
                 ? "bg-slate-800 text-teal-200"
                 : "text-slate-400 hover:text-slate-200",
             )}
-            onClick={() => setTab(item.id)}
           >
             {item.label}
           </button>
@@ -85,6 +102,8 @@ export function ArticlesManager({
           initialArticles={articles}
           categories={categories}
           subcategories={subcategories}
+          libraryAssets={libraryAssets}
+          libraryCategories={libraryCategories}
         />
       ) : null}
     </div>

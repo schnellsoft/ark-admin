@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -14,7 +14,9 @@ import {
   MapPin,
   Menu,
   MessageSquare,
+  PanelBottom,
   PanelLeft,
+  Phone,
   Settings2,
   Shapes,
   Sparkles,
@@ -80,13 +82,23 @@ const siteTree: NavBranch = {
       icon: Stethoscope,
       children: [
         { href: "/site/services", labelKey: "nav.servicesList", icon: Stethoscope },
-        { href: "/site/services?tab=categories", labelKey: "nav.serviceCategories", icon: List },
-        { href: "/site/services?tab=recommended", labelKey: "nav.serviceRecommended", icon: Sparkles },
+        {
+          href: "/site/services/categories",
+          labelKey: "nav.serviceCategories",
+          icon: List,
+        },
+        {
+          href: "/site/services/recommended",
+          labelKey: "nav.serviceRecommended",
+          icon: Sparkles,
+        },
       ],
     },
     { href: "/site/stuff", labelKey: "nav.stuff", icon: Users },
     { href: "/site/schedule", labelKey: "nav.schedule", icon: Clock },
+    { href: "/site/footer", labelKey: "nav.footer", icon: PanelBottom },
     { href: "/site/location", labelKey: "nav.location", icon: MapPin },
+    { href: "/site/contact", labelKey: "nav.contact", icon: Phone },
     {
       id: "articles",
       labelKey: "nav.articles",
@@ -94,7 +106,7 @@ const siteTree: NavBranch = {
       children: [
         { href: "/site/articles", labelKey: "nav.articlesList", icon: FileText },
         {
-          href: "/site/articles?tab=categories",
+          href: "/site/articles/categories",
           labelKey: "nav.articleCategories",
           icon: List,
         },
@@ -125,7 +137,7 @@ const userLinks: NavLeaf[] = [
 
 function pathMatches(pathname: string, href: string) {
   // Exact match for overview-style leaves that share a prefix with siblings.
-  if (href === "/site" || href === "/site/media") {
+  if (href === "/site" || href === "/site/media" || href === "/site/services" || href === "/site/articles") {
     return pathname === href;
   }
   if (href === "/site/slideshow") {
@@ -135,11 +147,19 @@ function pathMatches(pathname: string, href: string) {
         !pathname.startsWith("/site/slideshow/settings"))
     );
   }
-  if (href === "/site/services") {
-    return pathname === href || pathname.startsWith("/site/services/");
+  // Service / article editors live under /site/{section}/{id}/page — keep list
+  // siblings (categories, recommended) from stealing active state via prefix.
+  if (href === "/site/services/categories" || href === "/site/services/recommended") {
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
-  if (href === "/site/articles") {
-    return pathname === href || pathname.startsWith("/site/articles/");
+  if (href === "/site/articles/categories") {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+  if (pathname.startsWith("/site/services/") && pathname.includes("/page")) {
+    return href === "/site/services";
+  }
+  if (pathname.startsWith("/site/articles/") && pathname.includes("/page")) {
+    return href === "/site/articles";
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -173,11 +193,17 @@ function NavLink({
   onNavigate?: () => void;
 }) {
   const { t } = useI18n();
+  const router = useRouter();
   const active = pathMatches(pathname, href);
   return (
     <Link
       href={href}
-      onClick={onNavigate}
+      onClick={(e) => {
+        // vinext soft-nav via Link alone is unreliable between sibling routes
+        e.preventDefault();
+        onNavigate?.();
+        if (pathname !== href) router.push(href);
+      }}
       className={cn(
         "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
         active ? "bg-teal-700/90 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white",

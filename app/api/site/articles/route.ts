@@ -6,7 +6,10 @@ import {
   listArticles,
   replaceArticles,
 } from "@/lib/articles";
-import type { ArticleRow } from "@/lib/articles-shared";
+import {
+  emptyArticleSnippet,
+  type ArticleRow,
+} from "@/lib/articles-shared";
 import { emptyLocaleMap } from "@/lib/i18n";
 import { z } from "zod";
 
@@ -14,6 +17,15 @@ const localeMapSchema = z.object({
   ro: z.string(),
   en: z.string(),
   bg: z.string(),
+});
+
+const snippetSchema = z.object({
+  title: localeMapSchema,
+  text: localeMapSchema,
+  date: z.string().default(""),
+  library_id: z.string().nullable().optional(),
+  master_key: z.string().default(""),
+  webp_key: z.string().nullable().optional(),
 });
 
 const articleSchema = z.object({
@@ -24,6 +36,7 @@ const articleSchema = z.object({
   category_id: z.string().nullable().optional(),
   subcategory_id: z.string().nullable().optional(),
   datetime: z.string().default(""),
+  snippet: snippetSchema.optional(),
   enabled: z.boolean().default(true),
 });
 
@@ -52,16 +65,27 @@ export async function PUT(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
-    const rows: ArticleRow[] = parsed.data.articles.map((a) => ({
-      id: a.id,
-      position: a.position,
-      slug: a.slug,
-      title: a.title ?? emptyLocaleMap(),
-      category_id: a.category_id ?? null,
-      subcategory_id: a.subcategory_id ?? null,
-      datetime: a.datetime ?? "",
-      enabled: a.enabled,
-    }));
+    const rows: ArticleRow[] = parsed.data.articles.map((a) => {
+      const snippet = a.snippet ?? emptyArticleSnippet();
+      return {
+        id: a.id,
+        position: a.position,
+        slug: a.slug,
+        title: a.title ?? emptyLocaleMap(),
+        category_id: a.category_id ?? null,
+        subcategory_id: a.subcategory_id ?? null,
+        datetime: a.datetime ?? "",
+        snippet: {
+          title: snippet.title ?? emptyLocaleMap(),
+          text: snippet.text ?? emptyLocaleMap(),
+          date: snippet.date ?? "",
+          library_id: snippet.library_id ?? null,
+          master_key: snippet.master_key ?? "",
+          webp_key: snippet.webp_key ?? null,
+        },
+        enabled: a.enabled,
+      };
+    });
     const articles = await replaceArticles(rows);
     return NextResponse.json({ articles });
   } catch (err) {

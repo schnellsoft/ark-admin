@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/components/i18n-provider";
 import { sanitizeSlideLayerHtml } from "@/lib/slide-layer-sanitize";
+import { SlideIcon } from "@/lib/tiptap-slide-icon";
 import {
   defaultLayerVariant,
   normalizeLayerAnimation,
@@ -114,6 +115,13 @@ function LayerPreview({
     requestAnimationFrame(() => el.classList.add("is-in"));
   }, [playing, anim.effect, anim.direction, anim.duration, anim.delay, anim.playMode, htmlContent]);
 
+  const vAlign =
+    variant.verticalAlign === "top"
+      ? "flex-start"
+      : variant.verticalAlign === "bottom"
+        ? "flex-end"
+        : "center";
+
   return (
     <div
       className={`relative overflow-hidden rounded-xl bg-slate-950 ring-1 ring-slate-700 ${
@@ -138,6 +146,8 @@ function LayerPreview({
           opacity: variant.opacity,
           zIndex: variant.zIndex,
           borderRadius: variant.radius,
+          display: "flex",
+          alignItems: vAlign,
         }}
       >
         <div
@@ -147,7 +157,9 @@ function LayerPreview({
           }`}
           style={{
             color: variant.textColor,
-            height: "100%",
+            width: "100%",
+            maxHeight: "100%",
+            overflow: "auto",
             padding: variant.padding,
             background: `${variant.background.color}${Math.round(variant.background.opacity * 255)
               .toString(16)
@@ -155,13 +167,8 @@ function LayerPreview({
             backdropFilter: variant.background.blur
               ? `blur(${variant.background.blur}px)`
               : undefined,
-            display: "flex",
-            alignItems:
-              variant.verticalAlign === "top"
-                ? "flex-start"
-                : variant.verticalAlign === "bottom"
-                  ? "flex-end"
-                  : "center",
+            // Block layout so introduced HTML (p/h/ul/svg) renders as authored
+            display: "block",
             fontSize: variant.scaleText ? "clamp(0.75rem, 4cqi, 1.5rem)" : undefined,
           }}
           dangerouslySetInnerHTML={{ __html: htmlContent || "" }}
@@ -218,6 +225,31 @@ function LayerPreview({
           transform: none !important;
           transition: none !important;
         }
+        .hl-preview p,
+        .hl-preview h1,
+        .hl-preview h2,
+        .hl-preview h3,
+        .hl-preview h4 {
+          margin: 0 0 0.35em;
+        }
+        .hl-preview .slide-icon {
+          display: inline-block;
+          vertical-align: middle;
+          line-height: 0;
+          color: inherit;
+        }
+        .hl-preview .slide-icon svg {
+          width: 1.25em;
+          height: 1.25em;
+          fill: currentColor;
+        }
+        .hl-preview img {
+          max-width: 100%;
+          height: auto;
+        }
+        .hl-preview a.slide-btn {
+          display: inline-block;
+        }
       `}</style>
     </div>
   );
@@ -270,6 +302,7 @@ export function SlideshowOverlayText({
       Underline,
       Link.configure({ openOnClick: false }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      SlideIcon,
     ],
     content: desktopHtml || "<p></p>",
     immediatelyRender: false,
@@ -313,11 +346,11 @@ export function SlideshowOverlayText({
   }
 
   function insertHtml(snippet: string) {
-    if (sourceMode) {
-      setActiveHtml(sanitizeSlideLayerHtml(`${activeHtml}${snippet}`));
-      return;
+    const next = sanitizeSlideLayerHtml(`${activeHtml}${snippet}`);
+    setActiveHtml(next);
+    if (!sourceMode) {
+      editor?.commands.setContent(next || "<p></p>");
     }
-    editor?.chain().focus().insertContent(snippet).run();
   }
 
   const ribbonTabs = useMemo(
@@ -829,10 +862,15 @@ export function SlideshowOverlayText({
       ) : null}
 
       <LayerPreview
-        key={playTick}
+        key={`${playTick}-${device}-${sameAsDesktop ? "same" : "own"}`}
         variant={variant}
         htmlContent={
-          device === "mobile" && !sameAsDesktop ? mobileHtml || desktopHtml : desktopHtml
+          editingLocked
+            ? desktopHtml
+            : activeHtml ||
+              (device === "mobile" && !sameAsDesktop
+                ? mobileHtml || desktopHtml
+                : desktopHtml)
         }
         previewUrl={previewUrl}
         playing={playTick > 0}

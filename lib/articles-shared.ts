@@ -23,6 +23,16 @@ export type ArticleSubcategory = {
   enabled: boolean;
 };
 
+/** List-card snippet shown on the site (template: title + image + date + text). */
+export type ArticleSnippet = {
+  title: LocaleMap;
+  text: LocaleMap;
+  date: string;
+  library_id: string | null;
+  master_key: string;
+  webp_key: string | null;
+};
+
 export type ArticleRow = {
   id: string;
   position: number;
@@ -32,7 +42,14 @@ export type ArticleRow = {
   subcategory_id: string | null;
   /** Optional publish / display datetime (ISO or datetime-local). Empty when unset. */
   datetime: string;
+  snippet: ArticleSnippet;
   enabled: boolean;
+};
+
+/** Per-locale HTML bodies stored in `article_pages`. */
+export type ArticlePage = {
+  article_id: string;
+  body: LocaleMap;
 };
 
 export type ArticlesCatalogDocument = {
@@ -61,10 +78,31 @@ export type ArticlesCatalogDocument = {
     categoryId: string | null;
     subcategoryId: string | null;
     datetime: string | null;
+    snippet: {
+      title: LocaleMap;
+      text: LocaleMap;
+      date: string | null;
+      image: {
+        libraryId: string | null;
+        master: string | null;
+        webp: string | null;
+      };
+    };
     enabled: boolean;
   }>;
   updatedAt: string;
 };
+
+export function emptyArticleSnippet(): ArticleSnippet {
+  return {
+    title: emptyLocaleMap(),
+    text: emptyLocaleMap(),
+    date: "",
+    library_id: null,
+    master_key: "",
+    webp_key: null,
+  };
+}
 
 export function slugifyArticle(input: string): string {
   return (
@@ -109,6 +147,7 @@ export function emptyArticleRow(
     category_id: categoryId,
     subcategory_id: null,
     datetime: "",
+    snippet: emptyArticleSnippet(),
     enabled: true,
   };
 }
@@ -148,6 +187,24 @@ export function validateArticleDraft(
     (draft.slug ?? "").trim() ||
     slugifyArticle(titleEn || titleRo || titleBg);
   if (!slug) return "Slug is required";
+
+  const snippet = draft.snippet ?? emptyArticleSnippet();
+  const snTitle =
+    snippet.title?.ro?.trim() ||
+    snippet.title?.en?.trim() ||
+    snippet.title?.bg?.trim() ||
+    titleRo ||
+    titleEn ||
+    titleBg;
+  if (!snTitle) return "Snippet title is required";
+  const snText =
+    snippet.text?.ro?.trim() ||
+    snippet.text?.en?.trim() ||
+    snippet.text?.bg?.trim();
+  if (!snText) return "Snippet text is required";
+  if (!(snippet.master_key || "").trim() && !(snippet.webp_key || "").trim()) {
+    return "Snippet image is required";
+  }
   return null;
 }
 

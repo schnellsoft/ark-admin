@@ -15,7 +15,15 @@ import {
 } from "@/lib/library-shared";
 
 function previewUrl(key: string) {
-  return `/api/site/media/file?key=${encodeURIComponent(key)}`;
+  if (!key) return "";
+  const path = `/api/site/media/file?key=${encodeURIComponent(key)}`;
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
+}
+
+function imagePreviewKey(row: Pick<LibraryImage, "kind" | "webp_key" | "master_key">) {
+  if (row.kind === "video") return row.master_key;
+  return row.webp_key || row.master_key;
 }
 
 function CategoryChecks({
@@ -70,7 +78,11 @@ export function LibraryManager({
   initialSettings: LibrarySettings;
 }) {
   const { t } = useI18n();
-  const [images, setImages] = useState(initialImages);
+  const [images, setImages] = useState(() =>
+    [...initialImages]
+      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
+      .map((img, index) => ({ ...img, position: index + 1 })),
+  );
   const [categories] = useState(initialCategories);
   const [settings] = useState(initialSettings);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
@@ -91,10 +103,18 @@ export function LibraryManager({
       {
         id: "preview",
         header: t("library.preview"),
-        cell: (row) =>
-          row.kind === "video" ? (
+        cell: (row) => {
+          const key = imagePreviewKey(row);
+          if (!key) {
+            return (
+              <div className="grid h-12 w-12 place-items-center rounded bg-slate-800 text-[10px] text-slate-500">
+                —
+              </div>
+            );
+          }
+          return row.kind === "video" ? (
             <video
-              src={previewUrl(row.master_key)}
+              src={previewUrl(key)}
               className="h-12 w-12 rounded object-cover"
               muted
               playsInline
@@ -103,12 +123,13 @@ export function LibraryManager({
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={previewUrl(row.master_key)}
+              src={previewUrl(key)}
               alt={row.alt || row.name}
-              className="h-12 w-12 rounded object-cover"
+              className="h-12 w-12 rounded bg-slate-800 object-cover"
               loading="lazy"
             />
-          ),
+          );
+        },
       },
       {
         id: "kind",
@@ -295,12 +316,22 @@ export function LibraryManager({
                     categories={categories}
                   />
                 </div>
-                {draft.master_key ? (
+                {imagePreviewKey({
+                  kind: draft.kind === "video" ? "video" : "image",
+                  webp_key: draft.webp_key ?? null,
+                  master_key: draft.master_key ?? "",
+                }) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={previewUrl(draft.master_key)}
+                    src={previewUrl(
+                      imagePreviewKey({
+                        kind: draft.kind === "video" ? "video" : "image",
+                        webp_key: draft.webp_key ?? null,
+                        master_key: draft.master_key ?? "",
+                      }),
+                    )}
                     alt={draft.alt || draft.name || ""}
-                    className="h-24 w-24 rounded object-cover"
+                    className="h-24 w-24 rounded bg-slate-800 object-cover"
                   />
                 ) : (
                   <p className="text-sm text-slate-500 sm:col-span-2">

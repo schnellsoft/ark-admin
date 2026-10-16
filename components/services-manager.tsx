@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 import { ServicesCategoriesManager } from "@/components/services-categories-manager";
 import { ServicesGridManager } from "@/components/services-grid-manager";
@@ -17,9 +17,19 @@ import { cn } from "@/lib/utils";
 
 type Tab = "categories" | "services" | "recommended";
 
-function parseTab(raw: string | null): Tab {
-  if (raw === "categories" || raw === "recommended" || raw === "services") {
-    return raw;
+function tabFromPath(pathname: string, searchTab: string | null): Tab {
+  if (pathname.endsWith("/categories") || pathname.includes("/categories/")) {
+    return "categories";
+  }
+  if (pathname.endsWith("/recommended") || pathname.includes("/recommended/")) {
+    return "recommended";
+  }
+  if (
+    searchTab === "categories" ||
+    searchTab === "recommended" ||
+    searchTab === "services"
+  ) {
+    return searchTab;
   }
   return "services";
 }
@@ -38,27 +48,41 @@ export function ServicesManager({
   icons: IconRow[];
 }) {
   const { t } = useI18n();
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>(() => parseTab(searchParams.get("tab")));
+  const [tab, setTab] = useState<Tab>(() =>
+    tabFromPath(pathname, searchParams.get("tab")),
+  );
 
   useEffect(() => {
-    setTab(parseTab(searchParams.get("tab")));
-  }, [searchParams]);
+    setTab(tabFromPath(pathname, searchParams.get("tab")));
+  }, [pathname, searchParams]);
 
-  const tabs: Array<{ id: Tab; label: string }> = [
+  const tabs: Array<{ id: Tab; label: string; href: string }> = [
     {
       id: "categories",
       label: t("services.tabCategories") || "Categories",
+      href: "/site/services/categories",
     },
     {
       id: "services",
       label: t("services.tabServices") || "Services",
+      href: "/site/services",
     },
     {
       id: "recommended",
       label: t("services.tabRecommended") || "Recommended",
+      href: "/site/services/recommended",
     },
   ];
+
+  function selectTab(item: { id: Tab; href: string }) {
+    setTab(item.id);
+    if (pathname !== item.href) {
+      router.push(item.href);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -74,13 +98,13 @@ export function ServicesManager({
           <button
             key={item.id}
             type="button"
+            onClick={() => selectTab(item)}
             className={cn(
               "rounded-t-md px-3 py-2 text-sm transition-colors",
               tab === item.id
                 ? "bg-slate-800 text-teal-200"
                 : "text-slate-400 hover:text-slate-200",
             )}
-            onClick={() => setTab(item.id)}
           >
             {item.label}
           </button>

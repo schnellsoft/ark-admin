@@ -29,13 +29,23 @@ export function MultilingualTextEditor({
   rows?: number;
 }) {
   const { t, locale } = useI18n();
-  const [editLocale, setEditLocale] = useState<Locale>(locale);
-  const [status, setStatus] = useState("");
-  const [pending, setPending] = useState(false);
   const map = value ?? emptyLocaleMap();
 
+  function preferLocale(preferred: Locale, next: LocaleMap): Locale {
+    if (next[preferred]?.trim()) return preferred;
+    return LOCALES.find((code) => next[code]?.trim()) ?? preferred;
+  }
+
+  const [editLocale, setEditLocale] = useState<Locale>(() =>
+    preferLocale(locale, map),
+  );
+  const [status, setStatus] = useState("");
+  const [pending, setPending] = useState(false);
+
   useEffect(() => {
-    setEditLocale(locale);
+    setEditLocale(preferLocale(locale, map));
+    // Only follow admin UI locale changes. Entity switches remount via `key`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid yanking locale while typing
   }, [locale]);
 
   async function translateOthers() {

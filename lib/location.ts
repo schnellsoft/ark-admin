@@ -10,6 +10,7 @@ import {
 type LocationDb = {
   latitude: string;
   longitude: string;
+  address: string;
   google_maps_key: string;
   building_library_id: string | null;
   building_master_key: string;
@@ -27,7 +28,7 @@ export async function getLocationSettings(): Promise<LocationSettings> {
   const { SITE_DB } = getEnv();
   await ensureRow();
   const row = await SITE_DB.prepare(
-    `SELECT latitude, longitude, google_maps_key, building_library_id,
+    `SELECT latitude, longitude, address, google_maps_key, building_library_id,
             building_master_key, building_webp_key
      FROM location_settings WHERE id = 1`,
   ).first<LocationDb>();
@@ -36,6 +37,7 @@ export async function getLocationSettings(): Promise<LocationSettings> {
   return {
     latitude: row.latitude ?? "",
     longitude: row.longitude ?? "",
+    address: row.address ?? "",
     google_maps_key: row.google_maps_key ?? "",
     building_library_id: row.building_library_id,
     building_master_key: row.building_master_key ?? "",
@@ -55,6 +57,7 @@ export async function saveLocationSettings(
   const next: LocationSettings = {
     latitude: input.latitude.trim(),
     longitude: input.longitude.trim(),
+    address: input.address.trim(),
     google_maps_key: input.google_maps_key.trim(),
     building_library_id: input.building_library_id || null,
     building_master_key: input.building_master_key ?? "",
@@ -65,6 +68,7 @@ export async function saveLocationSettings(
     `UPDATE location_settings SET
        latitude = ?,
        longitude = ?,
+       address = ?,
        google_maps_key = ?,
        building_library_id = ?,
        building_master_key = ?,
@@ -75,6 +79,7 @@ export async function saveLocationSettings(
     .bind(
       next.latitude,
       next.longitude,
+      next.address,
       next.google_maps_key,
       next.building_library_id,
       next.building_master_key,
@@ -91,6 +96,7 @@ export async function buildLocationDocument(): Promise<LocationDocument> {
   return {
     latitude: loc.latitude,
     longitude: loc.longitude,
+    address: loc.address,
     googleMapsKey: loc.google_maps_key,
     building: {
       libraryId: loc.building_library_id,

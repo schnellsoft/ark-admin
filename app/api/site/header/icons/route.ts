@@ -13,7 +13,7 @@ import { z } from "zod";
 
 const iconSchema = z.object({
   id: z.string().uuid(),
-  icon_id: z.string().uuid().nullable().optional(),
+  icon_id: z.string().min(1).nullable().optional(),
   name: z.string().max(120).default(""),
   label: z.union([localeMapSchema, z.string().max(200)]).default({
     ro: "",
