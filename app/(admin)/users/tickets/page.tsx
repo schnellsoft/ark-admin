@@ -1,29 +1,33 @@
-import { getEnv } from "@/lib/env";
+import { getCurrentUser } from "@/lib/auth";
+import { listCrmUsers } from "@/lib/crm";
+import { countTicketUnread, enrichTicketsWithCrm, listTickets } from "@/lib/tickets";
 import { TicketsBoard } from "@/components/tickets-board";
+import { redirect } from "next/navigation";
 
 export default async function TicketsPage() {
-  const { SITE_DB } = getEnv();
-  const tickets = await SITE_DB.prepare(
-    `SELECT id, subject, status, from_name, from_email, body, created_at, updated_at
-     FROM tickets ORDER BY updated_at DESC`,
-  ).all<{
-    id: string;
-    subject: string;
-    status: "open" | "in_progress" | "closed";
-    from_name: string | null;
-    from_email: string | null;
-    body: string;
-    created_at: string;
-    updated_at: string;
-  }>();
+  const me = await getCurrentUser();
+  if (!me) redirect("/login");
+
+  const [tickets, doctors, ticketUnread] = await Promise.all([
+    enrichTicketsWithCrm(await listTickets()),
+    listCrmUsers("doctor"),
+    countTicketUnread(),
+  ]);
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">Tickets</h1>
-        <p className="text-slate-400">Clinic support tickets from the public site.</p>
+        <p className="text-slate-400">
+          Receptionist workspace — register patients, thread replies, book appointments, push enroll.
+        </p>
       </div>
-      <TicketsBoard initial={tickets.results ?? []} />
+      <TicketsBoard
+        initial={tickets}
+        currentUserId={me.id}
+        doctors={doctors}
+        ticketUnread={ticketUnread}
+      />
     </div>
   );
 }

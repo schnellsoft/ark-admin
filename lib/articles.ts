@@ -2,8 +2,10 @@ import { getEnv } from "./env";
 import { emptyLocaleMap } from "./i18n";
 import {
   ARTICLES_CONTENT_KEY,
+  articlePageDocumentKey,
   emptyArticleSnippet,
   normalizeArticleDatetime,
+  rewriteArticleHtmlForSite,
   slugifyArticle,
   type ArticleCategory,
   type ArticleFirstPageSlot,
@@ -113,13 +115,70 @@ function mapArticle(row: ArticleDb): ArticleRow {
   };
 }
 
+export type ArticleSlugScope = "article" | "category" | "subcategory";
+
 export async function isArticleSlugUnique(
   slug: string,
   excludeId?: string,
+  scope: ArticleSlugScope = "article",
+  categoryId?: string,
 ): Promise<boolean> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return false;
   const { SITE_DB } = getEnv();
+
+  if (scope === "category") {
+    if (excludeId) {
+      const row = await SITE_DB.prepare(
+        `SELECT id FROM article_categories WHERE lower(slug) = ? AND id != ? LIMIT 1`,
+      )
+        .bind(normalized, excludeId)
+        .first<{ id: string }>();
+      return !row;
+    }
+    const row = await SITE_DB.prepare(
+      `SELECT id FROM article_categories WHERE lower(slug) = ? LIMIT 1`,
+    )
+      .bind(normalized)
+      .first<{ id: string }>();
+    return !row;
+  }
+
+  if (scope === "subcategory") {
+    if (categoryId) {
+      if (excludeId) {
+        const row = await SITE_DB.prepare(
+          `SELECT id FROM article_subcategories
+           WHERE lower(slug) = ? AND category_id = ? AND id != ? LIMIT 1`,
+        )
+          .bind(normalized, categoryId, excludeId)
+          .first<{ id: string }>();
+        return !row;
+      }
+      const row = await SITE_DB.prepare(
+        `SELECT id FROM article_subcategories
+         WHERE lower(slug) = ? AND category_id = ? LIMIT 1`,
+      )
+        .bind(normalized, categoryId)
+        .first<{ id: string }>();
+      return !row;
+    }
+    if (excludeId) {
+      const row = await SITE_DB.prepare(
+        `SELECT id FROM article_subcategories WHERE lower(slug) = ? AND id != ? LIMIT 1`,
+      )
+        .bind(normalized, excludeId)
+        .first<{ id: string }>();
+      return !row;
+    }
+    const row = await SITE_DB.prepare(
+      `SELECT id FROM article_subcategories WHERE lower(slug) = ? LIMIT 1`,
+    )
+      .bind(normalized)
+      .first<{ id: string }>();
+    return !row;
+  }
+
   if (excludeId) {
     const row = await SITE_DB.prepare(
       `SELECT id FROM articles WHERE lower(slug) = ? AND id != ? LIMIT 1`,
@@ -235,7 +294,33 @@ export async function saveArticlePage(page: ArticlePage): Promise<ArticlePage> {
   )
     .bind(page.article_id, body.ro ?? "", body.en ?? "", body.bg ?? "")
     .run();
-  return getArticlePage(page.article_id);
+  const saved = await getArticlePage(page.article_id);
+  await publishArticlePage(page.article_id);
+  return saved;
+}
+
+export async function publishArticlePage(articleId: string): Promise<void> {
+  const { CONTENT } = getEnv();
+  const article = await getArticle(articleId);
+  if (!article) return;
+  const page = await getArticlePage(articleId);
+  const body = {
+    ro: rewriteArticleHtmlForSite(page.body.ro ?? ""),
+    en: rewriteArticleHtmlForSite(page.body.en ?? ""),
+    bg: rewriteArticleHtmlForSite(page.body.bg ?? ""),
+  };
+  const doc = {
+    id: article.id,
+    slug: article.slug,
+    title: article.title,
+    datetime: article.datetime || null,
+    enabled: article.enabled,
+    body,
+    updatedAt: new Date().toISOString(),
+  };
+  await CONTENT.put(articlePageDocumentKey(article.slug), JSON.stringify(doc, null, 2), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+  });
 }
 
 export async function replaceArticleCategories(
@@ -355,7 +440,7 @@ export async function replaceArticleSubcategories(
 export async function replaceArticles(
   articles: ArticleRow[],
 ): Promise<ArticleRow[]> {
-  const { SITE_DB } = getEnv();
+  const { SITE_DB, CONTENT } = getEnv();
   const normalized = articles
     .map((a, i) => {
       const snippet = a.snippet ?? emptyArticleSnippet();
@@ -401,6 +486,14 @@ export async function replaceArticles(
       await SITE_DB.prepare(`DELETE FROM article_pages WHERE article_id = ?`)
         .bind(old.id)
         .run();
+      await CONTENT.delete(articlePageDocumentKey(old.slug));
+    }
+  }
+
+  for (const a of normalized) {
+    const prior = existing.find((e) => e.id === a.id);
+    if (prior && prior.slug !== a.slug) {
+      await CONTENT.delete(articlePageDocumentKey(prior.slug));
     }
   }
 
@@ -462,6 +555,12 @@ export async function replaceArticles(
   }
 
   await publishArticlesCatalog();
+  for (const a of normalized) {
+    const prior = existing.find((e) => e.id === a.id);
+    if (prior && prior.slug !== a.slug) {
+      await publishArticlePage(a.id);
+    }
+  }
   return listArticles();
 }
 

@@ -18,8 +18,8 @@ export async function POST(request: Request) {
       : null;
 
     await DB.prepare(
-      `INSERT INTO users (id, email, password_hash, role, name, locale)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, email, password_hash, role, name, locale, phone, notes, active, position)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
     )
       .bind(
         id,
@@ -28,6 +28,8 @@ export async function POST(request: Request) {
         parsed.data.role,
         parsed.data.name,
         parsed.data.locale,
+        parsed.data.phone ?? "",
+        parsed.data.notes ?? "",
       )
       .run();
 

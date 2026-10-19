@@ -19,6 +19,13 @@ import type {
   SlideshowSlide,
 } from "@/lib/slideshow-shared";
 import { DEFAULT_FILTERS, focusFromCrop } from "@/lib/slideshow-shared";
+import {
+  DEFAULT_SLIDE_SCOPE,
+  slideFileApi,
+  slideItemApi,
+  slideMediaApi,
+  type SlideApiScope,
+} from "@/lib/slide-api-scope";
 
 function masterFile(prepared: {
   masterBlob: Blob;
@@ -43,7 +50,9 @@ async function uploadVariants(input: {
   title: string;
   alt: string;
   output?: SlideshowOutput;
+  scope?: SlideApiScope;
 }): Promise<SlideshowSlide> {
+  const scope = input.scope ?? DEFAULT_SLIDE_SCOPE;
   const bitmap = await createImageBitmap(input.blob, {
     imageOrientation: "from-image",
   } as ImageBitmapOptions);
@@ -86,7 +95,7 @@ async function uploadVariants(input: {
     );
   }
 
-  const res = await fetch(`/api/site/slideshow/${input.slideId}/media`, {
+  const res = await fetch(slideMediaApi(input.slideId, scope), {
     method: "POST",
     body: form,
   });
@@ -95,7 +104,7 @@ async function uploadVariants(input: {
     throw new Error(data.error || "Variant upload failed");
   }
 
-  const put = await fetch(`/api/site/slideshow/${input.slideId}`, {
+  const put = await fetch(slideItemApi(input.slideId, scope), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -123,7 +132,9 @@ export async function uploadSlideMedia(input: {
   desktopRatio?: string;
   filters?: ImageFilters;
   output?: SlideshowOutput;
+  scope?: SlideApiScope;
 }): Promise<SlideshowSlide> {
+  const scope = input.scope ?? DEFAULT_SLIDE_SCOPE;
   const isVideo = isAcceptedLibraryVideo(input.file);
   if (!isVideo && !isAcceptedLibraryFile(input.file)) {
     throw new Error("Unsupported file type");
@@ -149,7 +160,7 @@ export async function uploadSlideMedia(input: {
     );
   }
 
-  const res = await fetch(`/api/site/slideshow/${input.slideId}/media`, {
+  const res = await fetch(slideMediaApi(input.slideId, scope), {
     method: "POST",
     body: form,
   });
@@ -183,6 +194,7 @@ export async function uploadSlideMedia(input: {
     title,
     alt: slide.alt,
     output: input.output,
+    scope,
   });
 }
 
@@ -196,14 +208,16 @@ export async function importSlideFromLibrary(input: {
   desktopRatio?: string;
   filters?: ImageFilters;
   output?: SlideshowOutput;
+  scope?: SlideApiScope;
 }): Promise<SlideshowSlide> {
+  const scope = input.scope ?? DEFAULT_SLIDE_SCOPE;
   const form = new FormData();
   form.set("mode", "import");
   form.set("libraryId", input.libraryId);
   form.set("title", input.title ?? "");
   form.set("alt", input.alt ?? "");
 
-  const res = await fetch(`/api/site/slideshow/${input.slideId}/media`, {
+  const res = await fetch(slideMediaApi(input.slideId, scope), {
     method: "POST",
     body: form,
   });
@@ -219,7 +233,7 @@ export async function importSlideFromLibrary(input: {
   const slide = data.slide;
   if (slide.media_kind === "video") {
     if (input.title) {
-      const put = await fetch(`/api/site/slideshow/${input.slideId}`, {
+      const put = await fetch(slideItemApi(input.slideId, scope), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: input.title, alt: input.alt ?? slide.alt }),
@@ -233,9 +247,7 @@ export async function importSlideFromLibrary(input: {
   const sourceKey = data.sourceKey || slide.files.sourceKey;
   if (!sourceKey) throw new Error("Import did not return a source key");
 
-  const blobRes = await fetch(
-    `/api/site/slideshow/file?key=${encodeURIComponent(sourceKey)}`,
-  );
+  const blobRes = await fetch(slideFileApi(sourceKey, scope));
   if (!blobRes.ok) throw new Error("Could not load imported image");
   const blob = await blobRes.blob();
 
@@ -263,6 +275,7 @@ export async function importSlideFromLibrary(input: {
     title: input.title ?? slide.title,
     alt: input.alt ?? slide.alt,
     output: input.output,
+    scope,
   });
 }
 
@@ -280,7 +293,9 @@ export async function rebuildSlideVariants(input: {
   output?: SlideshowOutput;
   version?: string;
   sourceKey?: string | null;
+  scope?: SlideApiScope;
 }): Promise<SlideshowSlide> {
+  const scope = input.scope ?? DEFAULT_SLIDE_SCOPE;
   const blobRes = await fetch(input.sourceUrl);
   if (!blobRes.ok) throw new Error("Could not load source image");
   const blob = await blobRes.blob();
@@ -300,6 +315,7 @@ export async function rebuildSlideVariants(input: {
       title: input.title,
       alt: input.alt,
       output: input.output,
+      scope,
     });
   }
 
@@ -314,7 +330,7 @@ export async function rebuildSlideVariants(input: {
   if (input.desktopCrop) form.set("desktopCrop", JSON.stringify(input.desktopCrop));
   if (input.desktopFocus) form.set("desktopFocus", JSON.stringify(input.desktopFocus));
 
-  const res = await fetch(`/api/site/slideshow/${input.slideId}/media`, {
+  const res = await fetch(slideMediaApi(input.slideId, scope), {
     method: "POST",
     body: form,
   });
@@ -338,5 +354,6 @@ export async function rebuildSlideVariants(input: {
     title: input.title,
     alt: input.alt,
     output: input.output,
+    scope,
   });
 }

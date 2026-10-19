@@ -44,7 +44,13 @@ function SizeFields({
   );
 }
 
-export function SlideshowSettingsForm({ initial }: { initial: SlideshowSettings }) {
+export function SlideshowSettingsForm({
+  initial,
+  saveUrl = "/api/site/slideshow/settings",
+}: {
+  initial: SlideshowSettings;
+  saveUrl?: string;
+}) {
   const { t } = useI18n();
   const [s, setS] = useState(initial);
   const [status, setStatus] = useState("");
@@ -56,7 +62,7 @@ export function SlideshowSettingsForm({ initial }: { initial: SlideshowSettings 
     setPending(true);
     setStatus(t("slideshow.saving"));
     try {
-      const res = await fetch("/api/site/slideshow/settings", {
+      const res = await fetch(saveUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(s),

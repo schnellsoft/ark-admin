@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageIcon } from "lucide-react";
+import { ImageIcon, Languages } from "lucide-react";
 import { LibraryImagePicker, libraryMediaFileUrl } from "@/components/library-image-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,8 @@ export function ArticleSnippetEditor({
   const snippet = value ?? emptyArticleSnippet();
   const [editLocale, setEditLocale] = useState<Locale>(locale);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translateStatus, setTranslateStatus] = useState("");
 
   const titleMap: LocaleMap = {
     ...emptyLocaleMap(),
@@ -58,9 +60,56 @@ export function ArticleSnippetEditor({
   };
   const previewKey = snippet.webp_key || snippet.master_key;
   const dateValue = toDateValue(snippet.date);
+  const canTranslate = Boolean(
+    (titleMap[editLocale] ?? "").trim() || (textMap[editLocale] ?? "").trim(),
+  );
 
   function patch(partial: Partial<ArticleSnippet>) {
     onChange({ ...snippet, ...partial });
+  }
+
+  async function translateField(
+    text: string,
+    target: Locale,
+  ): Promise<string> {
+    const res = await fetch("/api/ai/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        sourceLocale: editLocale,
+        targetLocale: target,
+      }),
+    });
+    const data = (await res.json()) as { translated?: string; error?: string };
+    if (!res.ok || !data.translated) {
+      throw new Error(data.error ?? "Translate failed");
+    }
+    return data.translated;
+  }
+
+  async function translateOthers() {
+    const sourceTitle = (titleMap[editLocale] ?? "").trim();
+    const sourceText = (textMap[editLocale] ?? "").trim();
+    if (!sourceTitle && !sourceText) return;
+    setTranslating(true);
+    setTranslateStatus("");
+    try {
+      const nextTitle = { ...titleMap };
+      const nextText = { ...textMap };
+      for (const target of LOCALES.filter((l) => l !== editLocale)) {
+        if (sourceTitle) nextTitle[target] = await translateField(sourceTitle, target);
+        if (sourceText) nextText[target] = await translateField(sourceText, target);
+      }
+      patch({ title: nextTitle, text: nextText });
+      setTranslateStatus(t("articles.snippetTranslated") || "Translated");
+    } catch (err) {
+      setTranslateStatus(
+        err instanceof Error ? err.message : "Translate failed",
+      );
+    } finally {
+      setTranslating(false);
+    }
   }
 
   return (
@@ -87,6 +136,21 @@ export function ArticleSnippetEditor({
             </option>
           ))}
         </select>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={translating || !canTranslate}
+          onClick={() => void translateOthers()}
+        >
+          <Languages className="h-3.5 w-3.5" />
+          {translating
+            ? t("editor.translating")
+            : t("editor.translate")}
+        </Button>
+        {translateStatus ? (
+          <span className="text-xs text-slate-400">{translateStatus}</span>
+        ) : null}
       </div>
 
       {/* Wireframe template: title | image + date + text */}

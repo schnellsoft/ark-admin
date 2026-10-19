@@ -4,6 +4,10 @@ import { emptyLocaleMap } from "./i18n";
 export const SERVICES_CONTENT_KEY = "services/services.json";
 export const SERVICES_PAGES_PREFIX = "services/pages/";
 export const SERVICES_PDF_KEY = "services/price-list.pdf";
+/** Per-locale price list PDFs (RO also mirrored at SERVICES_PDF_KEY). */
+export function servicesPdfKeyForLocale(locale: "ro" | "en" | "bg"): string {
+  return `services/price-list-${locale}.pdf`;
+}
 export const SERVICES_ICONS_PREFIX = "services/icons/";
 export const SERVICES_MEDIA_PREFIX = "services/";
 
@@ -95,6 +99,7 @@ export type ServicesCatalogDocument = {
     enabled: boolean;
   }>;
   pdfKey: string;
+  pdfKeys: { ro: string; en: string; bg: string };
   updatedAt: string;
 };
 

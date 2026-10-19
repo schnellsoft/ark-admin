@@ -20,13 +20,13 @@ export function LoginForm() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: form.get("email"),
-        password: form.get("password"),
+        email: String(form.get("email") ?? "").trim(),
+        password: String(form.get("password") ?? ""),
       }),
     });
     setPending(false);
     if (!res.ok) {
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       setError(data.error ?? "Login failed");
       return;
     }
@@ -35,17 +35,23 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={onSubmit}>
+    <form className="space-y-4" onSubmit={onSubmit} autoComplete="on">
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" required defaultValue="admin@ark.local" />
+        <Input id="email" name="email" type="email" required autoComplete="username" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" required defaultValue="changeme" />
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          required
+          autoComplete="current-password"
+        />
       </div>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <Button className="w-full" disabled={pending}>
+      <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </Button>
     </form>

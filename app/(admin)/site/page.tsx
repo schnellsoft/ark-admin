@@ -15,7 +15,7 @@ const sections = [
   { href: "/site/footer", title: "Footer", desc: "Footer icon strip from Site/Icons" },
   { href: "/site/location", title: "Location", desc: "Address, map coordinates and building image" },
   { href: "/site/contact", title: "Contact", desc: "Phone and email for the public site" },
-  { href: "/site/galleries", title: "Galleries", desc: "Site image galleries" },
+  { href: "/site/galleries", title: "Galleries", desc: "Named galleries with slideshow-like slides" },
   { href: "/site/articles", title: "Articles", desc: "Articles list and categories" },
   { href: "/site/media", title: "Media · Library", desc: "Image library with categories" },
   { href: "/site/media/categories", title: "Media · Categories", desc: "Library image categories" },

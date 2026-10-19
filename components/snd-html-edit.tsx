@@ -79,6 +79,16 @@ export function SndHtmlEdit({
   const [mode, setMode] = useState<"visual" | "code">("visual");
   const [code, setCode] = useState(value);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleries, setGalleries] = useState<
+    Array<{
+      id: string;
+      slug: string;
+      name: { ro?: string; en?: string; bg?: string };
+      enabled?: boolean;
+    }>
+  >([]);
+  const [galleriesLoading, setGalleriesLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [opacityOpen, setOpacityOpen] = useState(false);
   const [opacityPct, setOpacityPct] = useState(100);
@@ -87,6 +97,7 @@ export function SndHtmlEdit({
   >([]);
   const [iconOpen, setIconOpen] = useState(false);
   const openLibraryRef = useRef<() => void>(() => {});
+  const openGalleryRef = useRef<() => void>(() => {});
   const openPreviewRef = useRef<() => void>(() => {});
   const openOpacityRef = useRef<() => void>(() => {});
   const openIconsRef = useRef<() => void>(() => {});
@@ -106,6 +117,34 @@ export function SndHtmlEdit({
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!galleryOpen || galleries.length > 0) return;
+    let cancelled = false;
+    setGalleriesLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/site/galleries");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          galleries?: Array<{
+            id: string;
+            slug: string;
+            name: { ro?: string; en?: string; bg?: string };
+            enabled?: boolean;
+          }>;
+        };
+        if (!cancelled) setGalleries(data.galleries ?? []);
+      } catch {
+        /* ignore */
+      } finally {
+        if (!cancelled) setGalleriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [galleryOpen, galleries.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,10 +168,17 @@ export function SndHtmlEdit({
 
   openLibraryRef.current = () => {
     setIconOpen(false);
+    setGalleryOpen(false);
     setLibraryOpen(true);
+  };
+  openGalleryRef.current = () => {
+    setIconOpen(false);
+    setLibraryOpen(false);
+    setGalleryOpen(true);
   };
   openIconsRef.current = () => {
     setLibraryOpen(false);
+    setGalleryOpen(false);
     setIconOpen((v) => !v);
   };
   openPreviewRef.current = () => {
@@ -180,19 +226,53 @@ export function SndHtmlEdit({
     [emitChange, mode],
   );
 
-  const insertLibraryImage = useCallback(
+  const insertLibraryMedia = useCallback(
     (asset: LibraryImage) => {
-      const key = asset.webp_key || asset.master_key;
-      if (!key) return;
-      const src = libraryMediaFileUrl(key);
-      const alt = (asset.alt || asset.name || "").replace(/"/g, "&quot;");
       const ed = editorRef.current;
-      const encodedAlt = ed ? ed.dom.encode(asset.alt || asset.name || "") : alt;
       const encodedId = ed ? ed.dom.encode(asset.id) : asset.id;
-      insertRawHtml(
-        `<img src="${src}" alt="${encodedAlt}" data-library-id="${encodedId}" style="max-width:100%;height:auto;" />`,
-      );
+      const encodedAlt = ed
+        ? ed.dom.encode(asset.alt || asset.name || "")
+        : (asset.alt || asset.name || "").replace(/"/g, "&quot;");
+
+      if (asset.kind === "video") {
+        const key = asset.master_key;
+        if (!key) return;
+        const src = libraryMediaFileUrl(key);
+        insertRawHtml(
+          `<video src="${src}" data-library-id="${encodedId}" controls playsinline preload="metadata" style="max-width:100%;height:auto;"></video>`,
+        );
+      } else {
+        const key = asset.webp_key || asset.master_key;
+        if (!key) return;
+        const src = libraryMediaFileUrl(key);
+        insertRawHtml(
+          `<img src="${src}" alt="${encodedAlt}" data-library-id="${encodedId}" style="max-width:100%;height:auto;" />`,
+        );
+      }
       setLibraryOpen(false);
+    },
+    [insertRawHtml],
+  );
+
+  const insertGallery = useCallback(
+    (gallery: {
+      id: string;
+      slug: string;
+      name: { ro?: string; en?: string; bg?: string };
+    }) => {
+      const label =
+        gallery.name.ro ||
+        gallery.name.en ||
+        gallery.name.bg ||
+        gallery.slug;
+      const ed = editorRef.current;
+      const encodedId = ed ? ed.dom.encode(gallery.id) : gallery.id;
+      const encodedSlug = ed ? ed.dom.encode(gallery.slug) : gallery.slug;
+      const encodedLabel = ed ? ed.dom.encode(label) : label.replace(/"/g, "&quot;");
+      insertRawHtml(
+        `<aside class="ark-article-gallery" data-gallery-id="${encodedId}" data-gallery-slug="${encodedSlug}" data-gallery-name="${encodedLabel}" contenteditable="false"><a href="/gallery/${encodedSlug}/">${encodedLabel}</a></aside>`,
+      );
+      setGalleryOpen(false);
     },
     [insertRawHtml],
   );
@@ -235,7 +315,7 @@ export function SndHtmlEdit({
         insert: {
           title: "Insert",
           items:
-            "articleimage articleicon link charmap hr anchor insertdatetime nonbreaking",
+            "articleimage articlegallery articleicon link charmap hr anchor insertdatetime nonbreaking",
         },
         format: {
           title: "Format",
@@ -252,7 +332,7 @@ export function SndHtmlEdit({
         },
       },
       toolbar:
-        "articlecode removeformat styles | bold italic underline | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link articleimage articleicon | articleprint articlepreview | forecolor backcolor emoticons",
+        "articlecode removeformat styles | bold italic underline | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link articleimage articlegallery articleicon | articleprint articlepreview | forecolor backcolor emoticons",
       plugins:
         "lists advlist link image table visualblocks charmap anchor insertdatetime nonbreaking emoticons",
       branding: false,
@@ -276,9 +356,18 @@ export function SndHtmlEdit({
           background: #0f172a;
           margin: 1rem;
         }
-        img { max-width: 100%; height: auto; display: inline-block; }
+        img, video { max-width: 100%; height: auto; display: inline-block; }
         .article-icon { display: inline-block; vertical-align: middle; line-height: 0; color: inherit; }
         .article-icon svg { width: 1.25em; height: 1.25em; fill: currentColor; }
+        .ark-article-gallery {
+          display: block;
+          margin: 1rem 0;
+          padding: 0.85rem 1rem;
+          border: 1px solid #475569;
+          border-radius: 0.5rem;
+          background: #0b1220;
+        }
+        .ark-article-gallery a { color: #ffe082; text-decoration: none; font-weight: 600; }
         table { border-collapse: collapse; width: 100%; }
         td, th { border: 1px solid #475569; padding: 0.35rem 0.5rem; }
         a { color: #5eead4; }
@@ -288,8 +377,8 @@ export function SndHtmlEdit({
       automatic_uploads: false,
       file_picker_types: "",
       extended_valid_elements:
-        "img[src|alt|width|height|style|data-library-id|class],span[class|style|data-icon-id|aria-hidden],svg[*],path[*],g[*],circle[*],rect[*],line[*],polyline[*],polygon[*],use[*]",
-      valid_children: "+body[style],+span[svg]",
+        "img[src|alt|width|height|style|data-library-id|class],video[src|controls|playsinline|preload|style|data-library-id|class|width|height],aside[class|data-gallery-id|data-gallery-slug|data-gallery-name|contenteditable|style],span[class|style|data-icon-id|aria-hidden],svg[*],path[*],g[*],circle[*],rect[*],line[*],polyline[*],polygon[*],use[*]",
+      valid_children: "+body[style],+span[svg],+aside[a]",
       setup(editor: TinyEditor) {
         editorRef.current = editor;
 
@@ -305,14 +394,25 @@ export function SndHtmlEdit({
         });
 
         editor.ui.registry.addMenuItem("articleimage", {
-          text: "Image…",
+          text: "Media…",
           icon: "image",
           onAction: () => openLibraryRef.current(),
         });
         editor.ui.registry.addButton("articleimage", {
-          tooltip: "Insert/edit image",
+          tooltip: "Insert image or video",
           icon: "image",
           onAction: () => openLibraryRef.current(),
+        });
+
+        editor.ui.registry.addMenuItem("articlegallery", {
+          text: "Gallery…",
+          icon: "embed",
+          onAction: () => openGalleryRef.current(),
+        });
+        editor.ui.registry.addButton("articlegallery", {
+          tooltip: "Insert gallery",
+          text: "Gallery",
+          onAction: () => openGalleryRef.current(),
         });
 
         editor.ui.registry.addMenuItem("articleicon", {
@@ -390,6 +490,22 @@ export function SndHtmlEdit({
           type="button"
           size="sm"
           variant="outline"
+          onClick={() => openLibraryRef.current()}
+        >
+          {t("articles.editor.insertMedia") || "Media"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => openGalleryRef.current()}
+        >
+          {t("articles.editor.insertGallery") || "Gallery"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
           onClick={() => openIconsRef.current()}
         >
           {t("articles.editor.insertIcon")}
@@ -456,8 +572,76 @@ export function SndHtmlEdit({
         onClose={() => setLibraryOpen(false)}
         assets={libraryAssets}
         categories={libraryCategories}
-        onSelect={insertLibraryImage}
+        onSelect={insertLibraryMedia}
+        allowVideo
       />
+
+      {galleryOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("articles.editor.insertGallery") || "Insert gallery"}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setGalleryOpen(false);
+          }}
+        >
+          <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+              <h2 className="text-lg font-medium text-teal-200">
+                {t("articles.editor.insertGallery") || "Insert gallery"}
+              </h2>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setGalleryOpen(false)}
+              >
+                {t("articles.editor.close")}
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {galleriesLoading ? (
+                <p className="text-sm text-slate-400">…</p>
+              ) : galleries.filter((g) => g.enabled !== false).length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  {t("articles.editor.noGalleries") || "No galleries yet."}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {galleries
+                    .filter((g) => g.enabled !== false)
+                    .map((g) => {
+                      const label =
+                        g.name.ro || g.name.en || g.name.bg || g.slug;
+                      return (
+                        <li key={g.id}>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-700 px-3 py-2 text-left hover:border-teal-600 hover:bg-slate-900"
+                            onClick={() => insertGallery(g)}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm text-slate-100">
+                                {label}
+                              </span>
+                              <span className="block truncate text-xs text-slate-500">
+                                /gallery/{g.slug}/
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-xs text-teal-300">
+                              {t("articles.editor.insertMedia") || "Insert"}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {previewOpen ? (
         <div

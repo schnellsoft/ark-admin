@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  CalendarDays,
   ChevronDown,
   Clock,
   CloudUpload,
+  ContactRound,
   FileText,
   ImageIcon,
   Images,
@@ -73,7 +75,6 @@ const siteTree: NavBranch = {
       children: [
         { href: "/site/slideshow", labelKey: "nav.slides", icon: Images },
         { href: "/site/slideshow/settings", labelKey: "nav.slideshowSettings", icon: Settings2 },
-        { href: "/site/galleries", labelKey: "nav.galleries", icon: Images },
       ],
     },
     {
@@ -99,6 +100,7 @@ const siteTree: NavBranch = {
     { href: "/site/footer", labelKey: "nav.footer", icon: PanelBottom },
     { href: "/site/location", labelKey: "nav.location", icon: MapPin },
     { href: "/site/contact", labelKey: "nav.contact", icon: Phone },
+    { href: "/site/galleries", labelKey: "nav.galleries", icon: Images },
     {
       id: "articles",
       labelKey: "nav.articles",
@@ -130,6 +132,8 @@ const siteTree: NavBranch = {
 
 const userLinks: NavLeaf[] = [
   { href: "/users", labelKey: "nav.accounts", icon: Users },
+  { href: "/users/patients", labelKey: "nav.patients", icon: ContactRound },
+  { href: "/users/appointments", labelKey: "nav.appointments", icon: CalendarDays },
   { href: "/users/messages", labelKey: "nav.messages", icon: MessageSquare },
   { href: "/users/tickets", labelKey: "nav.tickets", icon: Ticket },
   { href: "/users/geo", labelKey: "nav.geo", icon: MapPin },
@@ -137,8 +141,17 @@ const userLinks: NavLeaf[] = [
 
 function pathMatches(pathname: string, href: string) {
   // Exact match for overview-style leaves that share a prefix with siblings.
-  if (href === "/site" || href === "/site/media" || href === "/site/services" || href === "/site/articles") {
+  if (
+    href === "/site" ||
+    href === "/site/media" ||
+    href === "/site/services" ||
+    href === "/site/articles" ||
+    href === "/users"
+  ) {
     return pathname === href;
+  }
+  if (href === "/site/galleries") {
+    return pathname === href || pathname.startsWith("/site/galleries/");
   }
   if (href === "/site/slideshow") {
     return (
@@ -184,17 +197,25 @@ function NavLink({
   icon: Icon,
   pathname,
   unreadCount,
+  ticketUnreadCount,
   depth = 0,
   onNavigate,
 }: NavLeaf & {
   pathname: string;
   unreadCount?: number;
+  ticketUnreadCount?: number;
   depth?: number;
   onNavigate?: () => void;
 }) {
   const { t } = useI18n();
   const router = useRouter();
   const active = pathMatches(pathname, href);
+  const badge =
+    href === "/users/messages"
+      ? unreadCount
+      : href === "/users/tickets"
+        ? ticketUnreadCount
+        : 0;
   return (
     <Link
       href={href}
@@ -212,9 +233,9 @@ function NavLink({
     >
       {Icon ? <Icon className="h-4 w-4 shrink-0" /> : null}
       <span className="truncate">{t(labelKey)}</span>
-      {href === "/users/messages" && unreadCount && unreadCount > 0 ? (
+      {badge && badge > 0 ? (
         <span className="ml-auto rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-          {unreadCount}
+          {badge}
         </span>
       ) : null}
     </Link>
@@ -292,14 +313,30 @@ function AccordionBranch({
 function SidebarNav({
   pathname,
   unreadCount,
+  ticketUnreadCount,
   onNavigate,
 }: {
   pathname: string;
   unreadCount: number;
+  ticketUnreadCount: number;
   onNavigate?: () => void;
 }) {
   const { t } = useI18n();
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set(collectOpenIds(pathname, siteTree)));
+  const [ticketBadge, setTicketBadge] = useState(ticketUnreadCount);
+
+  useEffect(() => {
+    setTicketBadge(ticketUnreadCount);
+  }, [ticketUnreadCount]);
+
+  useEffect(() => {
+    function onUnread(e: Event) {
+      const n = (e as CustomEvent<number>).detail;
+      if (typeof n === "number") setTicketBadge(n);
+    }
+    window.addEventListener("ark:ticket-unread", onUnread);
+    return () => window.removeEventListener("ark:ticket-unread", onUnread);
+  }, []);
 
   useEffect(() => {
     setOpenIds((prev) => {
@@ -337,7 +374,13 @@ function SidebarNav({
         <ul className="space-y-1">
           {userLinks.map((link) => (
             <li key={link.href}>
-              <NavLink {...link} pathname={pathname} unreadCount={unreadCount} onNavigate={onNavigate} />
+              <NavLink
+                {...link}
+                pathname={pathname}
+                unreadCount={unreadCount}
+                ticketUnreadCount={ticketBadge}
+                onNavigate={onNavigate}
+              />
             </li>
           ))}
         </ul>
@@ -350,10 +393,12 @@ function AdminShellInner({
   children,
   userName,
   unreadCount,
+  ticketUnreadCount,
 }: {
   children: React.ReactNode;
   userName: string;
   unreadCount: number;
+  ticketUnreadCount: number;
 }) {
   const pathname = usePathname();
   const { t } = useI18n();
@@ -362,6 +407,15 @@ function AdminShellInner({
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (value?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (ticketUnreadCount > 0 && nav.setAppBadge) void nav.setAppBadge(ticketUnreadCount);
+    else if (nav.clearAppBadge) void nav.clearAppBadge();
+  }, [ticketUnreadCount]);
 
   const actions = useMemo(
     () => (
@@ -417,6 +471,7 @@ function AdminShellInner({
           <SidebarNav
             pathname={pathname}
             unreadCount={unreadCount}
+            ticketUnreadCount={ticketUnreadCount}
             onNavigate={() => setMobileOpen(false)}
           />
         </aside>
@@ -449,6 +504,7 @@ export function AdminShell(props: {
   children: React.ReactNode;
   userName: string;
   unreadCount: number;
+  ticketUnreadCount: number;
 }) {
   return (
     <I18nProvider>

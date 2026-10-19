@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Settings = {
+  site: { domain: string; adminApiUrl: string };
   ai: { endpoint: string; model: string; apiKey: string };
   email: { to: string; from: string; resendApiKey: string };
   locale: { default: string; supported: string[] };
@@ -28,12 +29,40 @@ export function SettingsForm({ initial }: { initial: Settings }) {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <Tabs defaultValue="ai">
+      <Tabs defaultValue="site">
         <TabsList>
+          <TabsTrigger value="site">Site</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="locale">Locale</TabsTrigger>
         </TabsList>
+        <TabsContent value="site" className="space-y-3">
+          <p className="text-sm text-slate-400">
+            Static site domain is used for Google Maps HTTP-referrer restrictions and published
+            into the site build. Admin API URL is used by the public contact form to create
+            tickets.
+          </p>
+          <div className="space-y-2">
+            <Label>Static site domain</Label>
+            <Input
+              value={form.site.domain}
+              onChange={(e) =>
+                setForm({ ...form, site: { ...form.site, domain: e.target.value } })
+              }
+              placeholder="https://arkmed.ro"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Admin API URL</Label>
+            <Input
+              value={form.site.adminApiUrl}
+              onChange={(e) =>
+                setForm({ ...form, site: { ...form.site, adminApiUrl: e.target.value } })
+              }
+              placeholder="https://admin.arkmed.ro"
+            />
+          </div>
+        </TabsContent>
         <TabsContent value="ai" className="space-y-3">
           <p className="text-sm text-slate-400">
             Defaults to Cloudflare Workers AI translation (

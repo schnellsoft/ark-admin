@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, X } from "lucide-react";
 import { SndGrid, type SndColumn } from "@/components/snd-grid";
 import { MultilingualTextEditor } from "@/components/multilingual-text-editor";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,100 @@ import {
   type ArticleCategory,
   type ArticleSubcategory,
 } from "@/lib/articles-shared";
-import { emptyLocaleMap } from "@/lib/i18n";
+import { emptyLocaleMap, type LocaleMap } from "@/lib/i18n";
+
+function CategorySlugField({
+  slug,
+  excludeId,
+  scope,
+  categoryId,
+  onChange,
+  unique,
+  setUnique,
+}: {
+  slug: string;
+  excludeId?: string;
+  scope: "category" | "subcategory";
+  categoryId?: string;
+  onChange: (slug: string) => void;
+  unique: boolean | null;
+  setUnique: (v: boolean | null) => void;
+}) {
+  const { t } = useI18n();
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    const value = slug.trim();
+    if (!value) {
+      setUnique(null);
+      setChecking(false);
+      return;
+    }
+    let cancelled = false;
+    setChecking(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const params = new URLSearchParams({ slug: value, scope });
+          if (excludeId) params.set("excludeId", excludeId);
+          if (categoryId) params.set("categoryId", categoryId);
+          const res = await fetch(
+            `/api/site/articles/check-slug?${params.toString()}`,
+          );
+          const data = (await res.json()) as { unique?: boolean };
+          if (!cancelled) setUnique(Boolean(data.unique));
+        } catch {
+          if (!cancelled) setUnique(null);
+        } finally {
+          if (!cancelled) setChecking(false);
+        }
+      })();
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [slug, excludeId, scope, categoryId, setUnique]);
+
+  return (
+    <div className="space-y-1">
+      <Label>Slug</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          value={slug}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1"
+          placeholder={t("articles.slugAuto") || "Auto from name"}
+        />
+        {checking ? (
+          <span className="text-xs text-slate-500">
+            {t("articles.slugChecking") || "…"}
+          </span>
+        ) : unique === true ? (
+          <span
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-green-500/40 bg-green-500/10 text-green-500"
+            title={t("articles.slugUniqueOk") || "Slug is available"}
+            aria-label={t("articles.slugUniqueOk") || "Slug is available"}
+          >
+            <Check className="h-5 w-5" strokeWidth={3} />
+          </span>
+        ) : unique === false ? (
+          <span
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-500"
+            title={t("articles.slugUniqueBad") || "Slug already exists"}
+            aria-label={t("articles.slugUniqueBad") || "Slug already exists"}
+          >
+            <X className="h-5 w-5" strokeWidth={3} />
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function autoSlugFromName(name: LocaleMap): string {
+  return slugifyArticle(name.en || name.ro || name.bg || "");
+}
 
 export function ArticlesCategoriesManager({
   initialCategories,
@@ -28,6 +122,8 @@ export function ArticlesCategoriesManager({
   const [categories, setCategories] = useState(initialCategories);
   const [subcategories, setSubcategories] = useState(initialSubcategories);
   const [filterCategoryId, setFilterCategoryId] = useState<string>("");
+  const [catSlugUnique, setCatSlugUnique] = useState<boolean | null>(null);
+  const [subSlugUnique, setSubSlugUnique] = useState<boolean | null>(null);
 
   const catColumns = useMemo<SndColumn<ArticleCategory>[]>(
     () => [
@@ -105,29 +201,36 @@ export function ArticlesCategoriesManager({
             if (data.categories) setCategories(data.categories);
           }}
           createEmpty={() => emptyArticleCategory()}
-          validateDraft={validateArticleCategoryDraft}
+          validateDraft={(draft) => {
+            const base = validateArticleCategoryDraft(draft);
+            if (base) return base;
+            if (catSlugUnique !== true) return t("articles.slugUniqueBad");
+            return null;
+          }}
           renderForm={({ draft, setDraft }) =>
             draft ? (
               <div className="space-y-3">
                 <MultilingualTextEditor
                   label={t("field.name")}
                   value={draft.name ?? emptyLocaleMap()}
-                  onChange={(name) => {
-                    const slug =
-                      draft.slug?.trim() ||
-                      slugifyArticle(name.en || name.ro || name.bg);
-                    setDraft({ ...draft, name, slug });
+                  onChange={(name) => setDraft({ ...draft, name })}
+                  onBlur={(name) => {
+                    const next = { ...draft, name };
+                    if (!draft.slug?.trim()) {
+                      const auto = autoSlugFromName(name);
+                      if (auto) next.slug = auto;
+                    }
+                    setDraft(next);
                   }}
                 />
-                <div className="space-y-1">
-                  <Label>Slug</Label>
-                  <Input
-                    value={draft.slug ?? ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, slug: e.target.value })
-                    }
-                  />
-                </div>
+                <CategorySlugField
+                  slug={draft.slug ?? ""}
+                  excludeId={draft.id}
+                  scope="category"
+                  onChange={(slug) => setDraft({ ...draft, slug })}
+                  unique={catSlugUnique}
+                  setUnique={setCatSlugUnique}
+                />
                 <label className="flex items-center gap-2 text-sm text-slate-300">
                   <input
                     type="checkbox"
@@ -209,7 +312,12 @@ export function ArticlesCategoriesManager({
               filterCategoryId || categories[0]?.id || "",
             )
           }
-          validateDraft={validateArticleSubcategoryDraft}
+          validateDraft={(draft) => {
+            const base = validateArticleSubcategoryDraft(draft);
+            if (base) return base;
+            if (subSlugUnique !== true) return t("articles.slugUniqueBad");
+            return null;
+          }}
           renderForm={({ draft, setDraft }) =>
             draft ? (
               <div className="space-y-3">
@@ -232,22 +340,25 @@ export function ArticlesCategoriesManager({
                 <MultilingualTextEditor
                   label={t("field.name")}
                   value={draft.name ?? emptyLocaleMap()}
-                  onChange={(name) => {
-                    const slug =
-                      draft.slug?.trim() ||
-                      slugifyArticle(name.en || name.ro || name.bg);
-                    setDraft({ ...draft, name, slug });
+                  onChange={(name) => setDraft({ ...draft, name })}
+                  onBlur={(name) => {
+                    const next = { ...draft, name };
+                    if (!draft.slug?.trim()) {
+                      const auto = autoSlugFromName(name);
+                      if (auto) next.slug = auto;
+                    }
+                    setDraft(next);
                   }}
                 />
-                <div className="space-y-1">
-                  <Label>Slug</Label>
-                  <Input
-                    value={draft.slug ?? ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, slug: e.target.value })
-                    }
-                  />
-                </div>
+                <CategorySlugField
+                  slug={draft.slug ?? ""}
+                  excludeId={draft.id}
+                  scope="subcategory"
+                  categoryId={draft.category_id}
+                  onChange={(slug) => setDraft({ ...draft, slug })}
+                  unique={subSlugUnique}
+                  setUnique={setSubSlugUnique}
+                />
               </div>
             ) : null
           }

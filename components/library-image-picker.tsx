@@ -4,7 +4,7 @@ import { SlideshowLibraryPicker } from "@/components/slideshow-library-picker";
 import { useI18n } from "@/components/i18n-provider";
 import type { LibraryCategory, LibraryImage } from "@/lib/library-shared";
 
-/** Library-only image picker (no upload). Filters to image assets. */
+/** Library-only media picker (no upload). Images by default; set allowVideo for videos too. */
 export function LibraryImagePicker({
   open,
   onClose,
@@ -12,6 +12,7 @@ export function LibraryImagePicker({
   categories,
   onSelect,
   busy,
+  allowVideo = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,20 +20,36 @@ export function LibraryImagePicker({
   categories: LibraryCategory[];
   onSelect: (asset: LibraryImage) => void;
   busy?: boolean;
+  allowVideo?: boolean;
 }) {
   const { t } = useI18n();
-  const images = assets.filter((a) => a.kind !== "video");
+  const filtered = allowVideo
+    ? assets
+    : assets.filter((a) => a.kind !== "video");
   return (
     <SlideshowLibraryPicker
       open={open}
       onClose={onClose}
-      assets={images}
+      assets={filtered}
       categories={categories}
       onSelect={onSelect}
       busy={busy}
-      title={t("articles.editor.pickImage")}
-      hint={t("articles.editor.pickImageHint")}
-      confirmLabel={t("articles.editor.insertImage")}
+      title={
+        allowVideo
+          ? t("articles.editor.pickMedia") || "Media from library"
+          : t("articles.editor.pickImage")
+      }
+      hint={
+        allowVideo
+          ? t("articles.editor.pickMediaHint") ||
+            "Search and select an image or video from the library."
+          : t("articles.editor.pickImageHint")
+      }
+      confirmLabel={
+        allowVideo
+          ? t("articles.editor.insertMedia") || t("articles.editor.insertImage")
+          : t("articles.editor.insertImage")
+      }
       confirmingLabel={t("articles.editor.insertingImage")}
     />
   );

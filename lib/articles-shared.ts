@@ -2,6 +2,54 @@ import type { LocaleMap } from "./i18n";
 import { emptyLocaleMap } from "./i18n";
 
 export const ARTICLES_CONTENT_KEY = "articles/articles.json";
+export const ARTICLES_PAGES_PREFIX = "articles/pages/";
+
+export function articlePageDocumentKey(slug: string): string {
+  return `${ARTICLES_PAGES_PREFIX}${slug}.json`;
+}
+
+/** Rewrite admin media file URLs to static `/media/<key>` paths. */
+export function rewriteArticleHtmlForSite(html: string): string {
+  return html.replace(
+    /(?:https?:\/\/[^"'>\s]+)?\/api\/site\/media\/file\?key=([^"'\s>&]+)/gi,
+    (_match, encoded: string) => {
+      try {
+        return `/media/${decodeURIComponent(encoded)}`;
+      } catch {
+        return `/media/${encoded}`;
+      }
+    },
+  );
+}
+
+/** Collect library media keys referenced in article HTML. */
+export function collectArticleMediaKeys(html: string): string[] {
+  const keys = new Set<string>();
+  const siteMedia = /\/media\/(library\/[^"'?\s>]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = siteMedia.exec(html))) {
+    if (m[1]) keys.add(m[1]);
+  }
+  const apiMedia = /\/api\/site\/media\/file\?key=([^"'\s>&]+)/gi;
+  while ((m = apiMedia.exec(html))) {
+    try {
+      keys.add(decodeURIComponent(m[1]!));
+    } catch {
+      keys.add(m[1]!);
+    }
+  }
+  return [...keys];
+}
+
+export function collectArticleGallerySlugs(html: string): string[] {
+  const slugs = new Set<string>();
+  const re = /data-gallery-slug=["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    if (m[1]?.trim()) slugs.add(m[1].trim());
+  }
+  return [...slugs];
+}
 
 export type ArticleCategory = {
   id: string;

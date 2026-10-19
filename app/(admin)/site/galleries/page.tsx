@@ -1,21 +1,17 @@
-"use client";
+import { GalleriesGridManager } from "@/components/galleries-grid-manager";
+import { getSetting } from "@/lib/content";
+import { listGalleries } from "@/lib/galleries";
 
-import { useI18n } from "@/components/i18n-provider";
-
-export default function GalleriesPage() {
-  const { t } = useI18n();
+export default async function GalleriesPage() {
+  const [galleries, site] = await Promise.all([
+    listGalleries(),
+    getSetting<{ domain?: string }>("site"),
+  ]);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">
-          {t("section.galleries.title") || "Galleries"}
-        </h1>
-        <p className="text-slate-400">
-          {t("section.galleries.description") ||
-            "Manage site image galleries."}
-        </p>
-      </div>
-    </div>
+    <GalleriesGridManager
+      initialGalleries={galleries}
+      siteDomain={(site?.domain || "").trim()}
+    />
   );
 }

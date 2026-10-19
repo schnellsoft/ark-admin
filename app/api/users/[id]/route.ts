@@ -6,7 +6,7 @@ import { z } from "zod";
 const updateBodySchema = z.object({
   email: z.string().email().optional(),
   name: z.string().min(1).max(120).optional(),
-  role: z.enum(["admin", "staff", "patient"]).optional(),
+  role: z.enum(["admin", "staff", "patient", "doctor"]).optional(),
   password: z.string().min(6).optional(),
   locale: z.string().min(2).max(10).optional(),
 });

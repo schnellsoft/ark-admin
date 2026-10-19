@@ -31,25 +31,31 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Ark Admin", body: "New clinic activity", url: "/users/messages" };
+  let data = { title: "Ark Admin", body: "New clinic activity", url: "/users/tickets", badge: undefined };
   try {
     data = { ...data, ...event.data?.json() };
   } catch {
     // ignore
   }
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      data: { url: data.url },
-    }),
+    (async () => {
+      if (typeof data.badge === "number" && self.registration.setAppBadge) {
+        if (data.badge > 0) await self.registration.setAppBadge(data.badge);
+        else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
+      }
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        data: { url: data.url || "/users/tickets" },
+      });
+    })(),
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/users/messages";
+  const url = event.notification.data?.url || "/users/tickets";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {

@@ -6,11 +6,16 @@ export const loginSchema = z.object({
 });
 
 export const userCreateSchema = z.object({
+  id: z.string().uuid().optional(),
   email: z.string().email(),
   name: z.string().min(1).max(120),
-  role: z.enum(["admin", "staff", "patient"]),
+  role: z.enum(["admin", "staff", "patient", "doctor"]),
   password: z.string().min(6).optional(),
   locale: z.string().min(2).max(10).default("en"),
+  phone: z.string().max(40).optional(),
+  notes: z.string().max(5000).optional(),
+  active: z.boolean().optional(),
+  position: z.number().int().positive().optional(),
 });
 
 export const userUpdateSchema = userCreateSchema.partial().extend({
@@ -29,12 +34,71 @@ export const ticketCreateSchema = z.object({
   body: z.string().min(1).max(5000),
   fromName: z.string().min(1).max(120),
   fromEmail: z.string().email(),
+  fromPhone: z.string().max(40).optional(),
+  serviceSlugs: z.array(z.string().max(120)).max(50).optional(),
+  source: z.string().max(80).optional(),
+  patientUserId: z.string().uuid().optional(),
+  priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+  dueAt: z.string().max(40).optional(),
 });
 
 export const ticketStatusSchema = z.object({
   id: z.string().uuid(),
-  status: z.enum(["open", "in_progress", "closed"]),
+  status: z.enum(["new", "in_progress", "waiting_on_patient", "resolved"]).optional(),
+  priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
   assigneeId: z.string().uuid().nullable().optional(),
+  dueAt: z.string().max(40).nullable().optional(),
+  patientUserId: z.string().uuid().nullable().optional(),
+  appointmentId: z.string().uuid().nullable().optional(),
+});
+
+export const ticketMessageSchema = z.object({
+  ticketId: z.string().uuid(),
+  body: z.string().min(1).max(5000),
+  kind: z.enum(["staff", "internal"]).default("staff"),
+  notifyPatient: z.boolean().optional(),
+});
+
+export const ticketRegisterPatientSchema = z.object({
+  ticketId: z.string().uuid(),
+  name: z.string().min(1).max(120).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().max(40).optional(),
+});
+
+export const appointmentCreateSchema = z.object({
+  patientId: z.string().uuid(),
+  doctorId: z.string().uuid().nullable().optional(),
+  startsAt: z.string().min(1).max(40),
+  endsAt: z.string().max(40).optional(),
+  subject: z.string().max(200).optional(),
+  notes: z.string().max(5000).optional(),
+  ticketId: z.string().uuid().nullable().optional(),
+  status: z
+    .enum(["scheduled", "in_progress", "completed", "postponed", "canceled", "no_show"])
+    .optional(),
+  announceOnTicket: z.boolean().optional(),
+});
+
+export const appointmentUpdateSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum([
+    "scheduled",
+    "in_progress",
+    "completed",
+    "postponed",
+    "canceled",
+    "no_show",
+  ]),
+  startsAt: z.string().max(40).optional(),
+  endsAt: z.string().max(40).optional(),
+  notes: z.string().max(5000).optional(),
+  announceOnTicket: z.boolean().optional(),
+});
+
+export const crmReorderSchema = z.object({
+  role: z.enum(["patient", "doctor"]),
+  orderedIds: z.array(z.string().uuid()).min(1),
 });
 
 export const localeMapSchema = z.object({
@@ -88,6 +152,13 @@ export const emailSettingsSchema = z.object({
 export const localeSettingsSchema = z.object({
   default: z.string().min(2).max(10),
   supported: z.array(z.string().min(2).max(10)).min(1),
+});
+
+export const siteSettingsSchema = z.object({
+  /** Public static site origin, e.g. https://arkmed.ro (Maps HTTP referrer). */
+  domain: z.string().max(300).default(""),
+  /** Admin API origin for public ticket posts, e.g. https://admin.arkmed.ro */
+  adminApiUrl: z.string().max(300).default(""),
 });
 
 export const translateSchema = z.object({

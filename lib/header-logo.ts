@@ -109,3 +109,37 @@ export async function putHeaderLogoImage(
   });
   return { type: "image", src: key };
 }
+
+/** Data URL for admin form preview (logos are small). */
+export async function getHeaderLogoImageDataUrl(
+  entry: HeaderLogoEntry | null | undefined,
+): Promise<string | null> {
+  if (!entry || entry.type !== "image" || !entry.src) return null;
+  const { MEDIA } = getEnv();
+  const obj = await MEDIA.get(entry.src);
+  if (!obj) return null;
+  try {
+    const buffer = await obj.arrayBuffer();
+    const contentType = obj.httpMetadata?.contentType || "image/png";
+    const base64 = Buffer.from(buffer).toString("base64");
+    return `data:${contentType};base64,${base64}`;
+  } catch {
+    return null;
+  }
+}
+
+export type HeaderLogoPreviews = {
+  logo_min: string | null;
+  logo_max: string | null;
+};
+
+export async function getHeaderLogoPreviews(
+  doc?: HeaderLogoDocument,
+): Promise<HeaderLogoPreviews> {
+  const document = doc ?? (await getHeaderLogoDocument());
+  const [logo_min, logo_max] = await Promise.all([
+    getHeaderLogoImageDataUrl(document.logo_min),
+    getHeaderLogoImageDataUrl(document.logo_max),
+  ]);
+  return { logo_min, logo_max };
+}

@@ -15,6 +15,8 @@ export type LocationDocument = {
   longitude: string;
   address: string;
   googleMapsKey: string;
+  /** Static site origin for Maps API HTTP-referrer allowlisting. */
+  siteDomain?: string;
   building: {
     libraryId: string | null;
     master: string | null;

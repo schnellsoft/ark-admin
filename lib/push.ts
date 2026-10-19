@@ -49,7 +49,12 @@ export async function sendPushToUser(
   return { sent };
 }
 
-export async function notifyStaff(payload: { title: string; body: string; url?: string }) {
+export async function notifyStaff(payload: {
+  title: string;
+  body: string;
+  url?: string;
+  badge?: number;
+}) {
   const { DB } = getEnv();
   const staff = await DB.prepare(
     `SELECT id FROM users WHERE role IN ('admin', 'staff')`,
@@ -61,4 +66,11 @@ export async function notifyStaff(payload: { title: string; body: string; url?: 
     total += result.sent;
   }
   return { sent: total };
+}
+
+export async function notifyPatient(
+  userId: string,
+  payload: { title: string; body: string; url?: string },
+) {
+  return sendPushToUser(userId, payload);
 }

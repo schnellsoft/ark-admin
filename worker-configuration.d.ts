@@ -10,6 +10,9 @@ interface __BaseEnv_Env {
 	SESSION_SECRET: string;
 	VAPID_PUBLIC_KEY: string;
 	VAPID_PRIVATE_KEY: string;
+	SITE_DEPLOY_HOOK_URL?: string;
+	SITE_REBUILD_GITHUB_TOKEN?: string;
+	SITE_REBUILD_GITHUB_REPO?: string;
 	CHAT: DurableObjectNamespace<import("./worker/index").ChatRoom>;
 }
 declare namespace Cloudflare {

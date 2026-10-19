@@ -127,9 +127,18 @@ export function ServicesGridManager({
     setPdfStatus("");
     try {
       const res = await fetch("/api/site/services/pdf", { method: "POST" });
-      const data = (await res.json()) as { error?: string; bytes?: number };
+      const data = (await res.json()) as {
+        error?: string;
+        bytes?: number;
+        bytesByLocale?: { ro?: number; en?: number; bg?: number };
+      };
       if (!res.ok) throw new Error(data.error || "Export failed");
-      setPdfStatus(`OK (${data.bytes ?? 0} bytes)`);
+      const by = data.bytesByLocale;
+      setPdfStatus(
+        by
+          ? `OK RO ${by.ro ?? 0} · EN ${by.en ?? 0} · BG ${by.bg ?? 0} bytes`
+          : `OK (${data.bytes ?? 0} bytes)`,
+      );
     } catch (err) {
       setPdfStatus(err instanceof Error ? err.message : "Export failed");
     } finally {
@@ -147,15 +156,19 @@ export function ServicesGridManager({
               ? t("services.exportingPdf") || "Exporting…"
               : t("services.exportPdf") || "Export to PDF"}
           </Button>
-          <a
-            href="/api/site/services/pdf"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-teal-200"
-            title={t("services.openPdf") || "Open PDF"}
-          >
-            <FileText className="h-4 w-4" />
-          </a>
+          {(["ro", "en", "bg"] as const).map((lang) => (
+            <a
+              key={lang}
+              href={`/api/site/services/pdf?lang=${lang}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-slate-600 px-2.5 text-xs uppercase tracking-wide text-slate-300 hover:bg-slate-800 hover:text-teal-200"
+              title={`${t("services.openPdf") || "Open PDF"} (${lang})`}
+            >
+              <FileText className="h-4 w-4" />
+              {lang}
+            </a>
+          ))}
           {pdfStatus ? (
             <span className="text-xs text-slate-400">{pdfStatus}</span>
           ) : null}

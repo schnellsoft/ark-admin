@@ -14,7 +14,6 @@ export default async function LoginPage() {
         <div className="mt-6">
           <LoginForm />
         </div>
-        <p className="mt-4 text-xs text-slate-500">Default: admin@ark.local / changeme</p>
       </div>
     </main>
   );

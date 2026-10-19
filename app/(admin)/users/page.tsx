@@ -14,7 +14,7 @@ export default async function UsersPage() {
     id: string;
     email: string;
     name: string;
-    role: "admin" | "staff" | "patient";
+    role: "admin" | "staff" | "patient" | "doctor";
     locale: string;
     lat: number | null;
     lng: number | null;

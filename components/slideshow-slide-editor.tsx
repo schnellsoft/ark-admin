@@ -24,15 +24,23 @@ import {
   uploadSlideMedia,
 } from "@/lib/slideshow-media-client";
 import {
-  slideSourceKey,
-  slideThumbKey,
   type SlideshowSettings,
   type SlideshowSlide,
 } from "@/lib/slideshow-shared";
+import {
+  DEFAULT_SLIDE_SCOPE,
+  slideFileApi,
+  slideItemApi,
+  slideLayerApi,
+  slideListHref,
+  slideMediaPrefix,
+  slideThumbKeyForScope,
+  type SlideApiScope,
+} from "@/lib/slide-api-scope";
 
-function fileUrl(key: string | null | undefined) {
+function fileUrl(key: string | null | undefined, scope: SlideApiScope) {
   if (!key) return null;
-  return `/api/site/slideshow/file?key=${encodeURIComponent(key)}`;
+  return slideFileApi(key, scope);
 }
 
 export function SlideshowSlideEditor({
@@ -42,6 +50,7 @@ export function SlideshowSlideEditor({
   librarySettings,
   libraryAssets,
   libraryCategories,
+  scope = DEFAULT_SLIDE_SCOPE,
 }: {
   id: string;
   initialSlide: SlideshowSlide;
@@ -49,6 +58,7 @@ export function SlideshowSlideEditor({
   librarySettings: LibrarySettings;
   libraryAssets: LibraryImage[];
   libraryCategories: LibraryCategory[];
+  scope?: SlideApiScope;
 }) {
   const { t } = useI18n();
   const [slide, setSlide] = useState(initialSlide);
@@ -64,7 +74,7 @@ export function SlideshowSlideEditor({
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch(`/api/site/slideshow/${id}/layer`);
+      const res = await fetch(slideLayerApi(id, scope));
       if (!res.ok) return;
       const data = (await res.json()) as {
         layer?: SlideshowSlide["layer"];
@@ -75,15 +85,15 @@ export function SlideshowSlideEditor({
       setDesktopHtml(data.desktopHtml ?? "");
       setMobileHtml(data.mobileHtml ?? "");
     })();
-  }, [id]);
+  }, [id, scope]);
 
   const previewUrl = useMemo(() => {
-    const source = slideSourceKey(slide);
-    if (source) return fileUrl(source);
-    return fileUrl(slideThumbKey(slide));
-  }, [slide]);
+    const source = slide.files.sourceKey || (slide.files.video?.key ?? null);
+    if (source) return fileUrl(source, scope);
+    return fileUrl(slideThumbKeyForScope(slide, scope), scope);
+  }, [slide, scope]);
 
-  const thumbUrl = fileUrl(slideThumbKey(slide));
+  const thumbUrl = fileUrl(slideThumbKeyForScope(slide, scope), scope);
 
   /** Prefer baked crop variants for overlay preview art-direction. */
   const desktopCropUrl = useMemo(() => {
@@ -91,20 +101,26 @@ export function SlideshowSlideEditor({
     const w =
       desk["1920"] ? "1920" : desk["1280"] ? "1280" : Object.keys(desk).sort((a, b) => +b - +a)[0];
     if (w && slide.version) {
-      return fileUrl(`slideshow/${slide.id}/slide-${slide.id}.${slide.version}-d-${w}.jpg`);
+      return fileUrl(
+        `${slideMediaPrefix(slide.id, scope)}slide-${slide.id}.${slide.version}-d-${w}.jpg`,
+        scope,
+      );
     }
     return thumbUrl;
-  }, [slide, thumbUrl]);
+  }, [slide, thumbUrl, scope]);
 
   const mobileCropUrl = useMemo(() => {
     const mob = slide.files.mobile ?? {};
     const w =
       mob["1080"] ? "1080" : mob["720"] ? "720" : Object.keys(mob).sort((a, b) => +b - +a)[0];
     if (w && slide.version) {
-      return fileUrl(`slideshow/${slide.id}/slide-${slide.id}.${slide.version}-m-${w}.jpg`);
+      return fileUrl(
+        `${slideMediaPrefix(slide.id, scope)}slide-${slide.id}.${slide.version}-m-${w}.jpg`,
+        scope,
+      );
     }
     return desktopCropUrl;
-  }, [slide, desktopCropUrl]);
+  }, [slide, desktopCropUrl, scope]);
 
   async function saveMeta(opts?: { bakeImages?: boolean }) {
     const bakeImages = opts?.bakeImages !== false;
@@ -112,7 +128,7 @@ export function SlideshowSlideEditor({
     if (bakeImages && slide.media_kind === "image") setApplying(true);
     setStatus(t("slideshow.saving"));
     try {
-      const res = await fetch(`/api/site/slideshow/${id}`, {
+      const res = await fetch(slideItemApi(id, scope), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -131,7 +147,7 @@ export function SlideshowSlideEditor({
 
       const sameAsDesktop =
         layer.mobile && "sameAsDesktop" in layer.mobile && layer.mobile.sameAsDesktop;
-      const layerRes = await fetch(`/api/site/slideshow/${id}/layer`, {
+      const layerRes = await fetch(slideLayerApi(id, scope), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -172,6 +188,7 @@ export function SlideshowSlideEditor({
           output: settings.output,
           version: next.version,
           sourceKey: next.files.sourceKey,
+          scope,
         });
         next = { ...next, layer };
         setStatus(t("slideshow.imagesRebuilt"));
@@ -212,6 +229,7 @@ export function SlideshowSlideEditor({
         desktopRatio: settings.ratio,
         filters: slide.filters,
         output: settings.output,
+        scope,
       });
       setSlide(next);
       setStatus(t("slideshow.uploadDone"));
@@ -236,6 +254,7 @@ export function SlideshowSlideEditor({
         desktopRatio: settings.ratio,
         filters: slide.filters,
         output: settings.output,
+        scope,
       });
       setSlide(next);
       setPickerOpen(false);
@@ -252,7 +271,7 @@ export function SlideshowSlideEditor({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-3">
           <Button type="button" variant="outline" size="sm" asChild>
-            <Link href="/site/slideshow">
+            <Link href={slideListHref(scope)}>
               <ArrowLeft className="size-4" />
               {t("slideshow.backToSlides")}
             </Link>

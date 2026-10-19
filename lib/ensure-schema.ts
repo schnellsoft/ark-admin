@@ -2,17 +2,23 @@ import { DEFAULT_AI_SETTINGS_JSON } from "./ai-defaults";
 import { getEnv } from "./env";
 
 /** Bump when additive migrations must re-run on already-booted local DBs. */
-const SCHEMA_EPOCH = 14;
+const SCHEMA_EPOCH = 18;
 let schemaReadyEpoch = 0;
+/** Serialize bootstrap — concurrent first requests otherwise race on table rebuilds. */
+let schemaInflight: Promise<void> | null = null;
 
 const USERS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'staff', 'patient')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'staff', 'patient', 'doctor')),
   name TEXT NOT NULL,
   locale TEXT NOT NULL DEFAULT 'en',
+  phone TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 1,
   lat REAL,
   lng REAL,
   geo_updated_at TEXT,
@@ -27,7 +33,34 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS appointments (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL,
+  doctor_id TEXT,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'scheduled'
+    CHECK (status IN ('scheduled', 'in_progress', 'completed', 'postponed', 'canceled', 'no_show')),
+  ticket_id TEXT,
+  subject TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS patient_push_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_appointments_starts ON appointments(starts_at);
+CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id, starts_at);
+CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status, starts_at);
+CREATE INDEX IF NOT EXISTS idx_appointments_doctor ON appointments(doctor_id, starts_at);
 `;
 
 const SITE_SCHEMA = `
@@ -46,14 +79,37 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE TABLE IF NOT EXISTS tickets (
   id TEXT PRIMARY KEY,
   subject TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'closed')),
+  status TEXT NOT NULL DEFAULT 'new'
+    CHECK (status IN ('new', 'in_progress', 'waiting_on_patient', 'resolved')),
+  priority TEXT NOT NULL DEFAULT 'normal'
+    CHECK (priority IN ('urgent', 'high', 'normal', 'low')),
   assignee_id TEXT,
+  patient_user_id TEXT,
+  appointment_id TEXT,
+  ticket_number INTEGER NOT NULL DEFAULT 0,
   from_name TEXT,
   from_email TEXT,
+  from_phone TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'website',
+  due_at TEXT,
   body TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS ticket_messages (
+  id TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  author_user_id TEXT,
+  author_name TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL CHECK (kind IN ('patient', 'staff', 'internal')),
+  body TEXT NOT NULL,
+  staff_read_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ticket_messages_unread ON ticket_messages(staff_read_at);
 
 CREATE TABLE IF NOT EXISTS content_drafts (
   key TEXT PRIMARY KEY,
@@ -269,6 +325,45 @@ CREATE TABLE IF NOT EXISTS slideshow_slides (
 );
 
 CREATE INDEX IF NOT EXISTS idx_slideshow_slides_position ON slideshow_slides(position);
+
+CREATE TABLE IF NOT EXISTS galleries (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 1,
+  slug TEXT NOT NULL UNIQUE,
+  name_ro TEXT NOT NULL DEFAULT '',
+  name_en TEXT NOT NULL DEFAULT '',
+  name_bg TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  settings_json TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_galleries_position ON galleries(position);
+
+CREATE TABLE IF NOT EXISTS gallery_slides (
+  id TEXT PRIMARY KEY,
+  gallery_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 1,
+  title TEXT NOT NULL DEFAULT '',
+  alt TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  media_kind TEXT NOT NULL DEFAULT 'image',
+  version TEXT NOT NULL DEFAULT '',
+  mobile_crop_json TEXT NOT NULL DEFAULT '',
+  desktop_crop_json TEXT NOT NULL DEFAULT '',
+  desktop_focus_json TEXT NOT NULL DEFAULT '',
+  filters_json TEXT NOT NULL DEFAULT '',
+  files_json TEXT NOT NULL DEFAULT '{}',
+  layer_json TEXT NOT NULL DEFAULT '',
+  library_asset_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (gallery_id) REFERENCES galleries(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_gallery_slides_gallery_position
+  ON gallery_slides(gallery_id, position);
 `;
 
 const SERVICES_SCHEMA = `
@@ -592,13 +687,38 @@ async function runStatements(db: D1Database, sql: string) {
     .map((s) => s.trim())
     .filter(Boolean);
   for (const statement of statements) {
-    await db.prepare(statement).run();
+    try {
+      await db.prepare(statement).run();
+    } catch (error) {
+      // Existing local DBs may lack columns referenced by new indexes until migrate* runs.
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/no such column/i.test(msg) && /^CREATE INDEX/i.test(statement)) {
+        continue;
+      }
+      throw error;
+    }
   }
 }
 
 export async function ensureSchema() {
   if (schemaReadyEpoch === SCHEMA_EPOCH) return;
+  if (schemaInflight) {
+    await schemaInflight;
+    return;
+  }
+  schemaInflight = runEnsureSchema().finally(() => {
+    schemaInflight = null;
+  });
+  await schemaInflight;
+}
+
+async function runEnsureSchema() {
+  if (schemaReadyEpoch === SCHEMA_EPOCH) return;
   const { DB, SITE_DB } = getEnv();
+
+  // Clear leftover rebuild tables from interrupted prior boots.
+  await DB.prepare(`DROP TABLE IF EXISTS users__crm_mig`).run();
+  await SITE_DB.prepare(`DROP TABLE IF EXISTS tickets__crm_mig`).run();
 
   await runStatements(DB, USERS_SCHEMA);
   await runStatements(SITE_DB, SITE_SCHEMA);
@@ -626,10 +746,16 @@ export async function ensureSchema() {
     `INSERT OR IGNORE INTO site_settings (key, value_json) VALUES
       ('ai', ?),
       ('email', '{"to":"admin@ark.local","from":"noreply@ark.local","resendApiKey":""}'),
-      ('locale', '{"default":"en","supported":["en","ro"]}')`,
+      ('locale', '{"default":"en","supported":["en","ro"]}'),
+      ('site', '{"domain":"","adminApiUrl":""}')`,
   )
     .bind(DEFAULT_AI_SETTINGS_JSON)
     .run();
+
+  await SITE_DB.prepare(
+    `INSERT OR IGNORE INTO site_settings (key, value_json) VALUES
+      ('site', '{"domain":"","adminApiUrl":""}')`,
+  ).run();
 
   // Migrate empty seed defaults (OpenAI or old CF chat defaults) to CF translation model.
   await SITE_DB.prepare(
@@ -864,7 +990,270 @@ export async function ensureSchema() {
      VALUES (1, 1, 3000, 1)`,
   ).run();
 
+  await migrateUsersCrm(DB);
+  await migrateTicketsCrm(SITE_DB);
+
   schemaReadyEpoch = SCHEMA_EPOCH;
+}
+
+/** Additive CRM columns + widen role CHECK (rebuild when needed). */
+async function migrateUsersCrm(db: D1Database) {
+  await tryAlter(db, `ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`);
+  await tryAlter(db, `ALTER TABLE users ADD COLUMN notes TEXT NOT NULL DEFAULT ''`);
+  await tryAlter(db, `ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1`);
+  await tryAlter(db, `ALTER TABLE users ADD COLUMN position INTEGER NOT NULL DEFAULT 1`);
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS appointments (
+        id TEXT PRIMARY KEY,
+        patient_id TEXT NOT NULL,
+        doctor_id TEXT,
+        starts_at TEXT NOT NULL,
+        ends_at TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'scheduled'
+          CHECK (status IN ('scheduled', 'in_progress', 'completed', 'postponed', 'canceled', 'no_show')),
+        ticket_id TEXT,
+        subject TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    )
+    .run();
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_appointments_starts ON appointments(starts_at)`)
+    .run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id, starts_at)`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status, starts_at)`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_appointments_doctor ON appointments(doctor_id, starts_at)`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS patient_push_tokens (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    )
+    .run();
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_users_role_position ON users(role, position)`)
+    .run();
+
+  // Widen role CHECK to include doctor when an old table definition is still in place.
+  try {
+    await db
+      .prepare(
+        `INSERT INTO users (id, email, password_hash, role, name, locale)
+         VALUES ('__role_probe__', '__role_probe__@ark.invalid', NULL, 'doctor', 'probe', 'en')`,
+      )
+      .run();
+    await db.prepare(`DELETE FROM users WHERE id = '__role_probe__'`).run();
+  } catch {
+    await rebuildUsersWithDoctorRole(db);
+  }
+}
+
+async function rebuildUsersWithDoctorRole(db: D1Database) {
+  const tmp = `users__crm_mig_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  await db.prepare(`DROP TABLE IF EXISTS users__crm_mig`).run();
+  await db
+    .prepare(
+      `CREATE TABLE ${tmp} (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT,
+        role TEXT NOT NULL CHECK (role IN ('admin', 'staff', 'patient', 'doctor')),
+        name TEXT NOT NULL,
+        locale TEXT NOT NULL DEFAULT 'en',
+        phone TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        active INTEGER NOT NULL DEFAULT 1,
+        position INTEGER NOT NULL DEFAULT 1,
+        lat REAL,
+        lng REAL,
+        geo_updated_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO ${tmp} (
+         id, email, password_hash, role, name, locale, phone, notes, active, position,
+         lat, lng, geo_updated_at, created_at
+       )
+       SELECT id, email, password_hash, role, name, locale,
+              COALESCE(phone, ''), COALESCE(notes, ''), COALESCE(active, 1), COALESCE(position, 1),
+              lat, lng, geo_updated_at, created_at
+       FROM users`,
+    )
+    .run();
+  await db.prepare(`DROP TABLE users`).run();
+  await db.prepare(`ALTER TABLE ${tmp} RENAME TO users`).run();
+}
+
+async function migrateTicketsCrm(db: D1Database) {
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'`);
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN patient_user_id TEXT`);
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN appointment_id TEXT`);
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN ticket_number INTEGER NOT NULL DEFAULT 0`);
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN from_phone TEXT NOT NULL DEFAULT ''`);
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN source TEXT NOT NULL DEFAULT 'website'`);
+  await tryAlter(db, `ALTER TABLE tickets ADD COLUMN due_at TEXT`);
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS ticket_messages (
+        id TEXT PRIMARY KEY,
+        ticket_id TEXT NOT NULL,
+        author_user_id TEXT,
+        author_name TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL CHECK (kind IN ('patient', 'staff', 'internal')),
+        body TEXT NOT NULL,
+        staff_read_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id, created_at)`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_ticket_messages_unread ON ticket_messages(staff_read_at)`,
+    )
+    .run();
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_tickets_number ON tickets(ticket_number)`)
+    .run();
+
+  // Migrate legacy statuses if old CHECK still allows them; then rebuild for new CHECK.
+  try {
+    await db.prepare(`UPDATE tickets SET status = 'new' WHERE status = 'open'`).run();
+    await db.prepare(`UPDATE tickets SET status = 'resolved' WHERE status = 'closed'`).run();
+  } catch {
+    // ignore
+  }
+
+  try {
+    await db
+      .prepare(
+        `INSERT INTO tickets (id, subject, status, body)
+         VALUES ('__status_probe__', 'probe', 'waiting_on_patient', 'probe')`,
+      )
+      .run();
+    await db.prepare(`DELETE FROM tickets WHERE id = '__status_probe__'`).run();
+  } catch {
+    await rebuildTicketsStatuses(db);
+  }
+
+  await db
+    .prepare(
+      `UPDATE tickets
+       SET ticket_number = (
+         SELECT COUNT(*) FROM tickets t2
+         WHERE t2.created_at < tickets.created_at
+            OR (t2.created_at = tickets.created_at AND t2.id <= tickets.id)
+       )
+       WHERE ticket_number = 0 OR ticket_number IS NULL`,
+    )
+    .run();
+
+  // Seed thread from body for tickets that have no messages yet.
+  const orphans = await db
+    .prepare(
+      `SELECT t.id, t.from_name, t.body, t.created_at
+       FROM tickets t
+       WHERE NOT EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = t.id)`,
+    )
+    .all<{ id: string; from_name: string | null; body: string; created_at: string }>();
+  for (const row of orphans.results ?? []) {
+    await db
+      .prepare(
+        `INSERT INTO ticket_messages (id, ticket_id, author_name, kind, body, staff_read_at, created_at)
+         VALUES (?, ?, ?, 'patient', ?, NULL, ?)`,
+      )
+      .bind(crypto.randomUUID(), row.id, row.from_name ?? "", row.body, row.created_at)
+      .run();
+  }
+}
+
+async function rebuildTicketsStatuses(db: D1Database) {
+  const tmp = `tickets__crm_mig_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  await db.prepare(`DROP TABLE IF EXISTS tickets__crm_mig`).run();
+  await db
+    .prepare(
+      `CREATE TABLE ${tmp} (
+        id TEXT PRIMARY KEY,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'new'
+          CHECK (status IN ('new', 'in_progress', 'waiting_on_patient', 'resolved')),
+        priority TEXT NOT NULL DEFAULT 'normal'
+          CHECK (priority IN ('urgent', 'high', 'normal', 'low')),
+        assignee_id TEXT,
+        patient_user_id TEXT,
+        appointment_id TEXT,
+        ticket_number INTEGER NOT NULL DEFAULT 0,
+        from_name TEXT,
+        from_email TEXT,
+        from_phone TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'website',
+        due_at TEXT,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO ${tmp} (
+         id, subject, status, priority, assignee_id, patient_user_id, appointment_id,
+         ticket_number, from_name, from_email, from_phone, source, due_at, body,
+         created_at, updated_at
+       )
+       SELECT id, subject,
+         CASE status
+           WHEN 'open' THEN 'new'
+           WHEN 'closed' THEN 'resolved'
+           WHEN 'new' THEN 'new'
+           WHEN 'in_progress' THEN 'in_progress'
+           WHEN 'waiting_on_patient' THEN 'waiting_on_patient'
+           WHEN 'resolved' THEN 'resolved'
+           ELSE 'new'
+         END,
+         CASE
+           WHEN priority IN ('urgent', 'high', 'normal', 'low') THEN priority
+           ELSE 'normal'
+         END,
+         assignee_id, patient_user_id, appointment_id,
+         COALESCE(ticket_number, 0), from_name, from_email,
+         COALESCE(from_phone, ''), COALESCE(source, 'website'), due_at, body,
+         created_at, updated_at
+       FROM tickets`,
+    )
+    .run();
+  await db.prepare(`DROP TABLE tickets`).run();
+  await db.prepare(`ALTER TABLE ${tmp} RENAME TO tickets`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_tickets_number ON tickets(ticket_number)`).run();
 }
 
 async function rebuildStuffNamedCatalogWithoutSlug(

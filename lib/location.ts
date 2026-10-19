@@ -93,11 +93,14 @@ export async function saveLocationSettings(
 
 export async function buildLocationDocument(): Promise<LocationDocument> {
   const loc = await getLocationSettings();
+  const { getSetting } = await import("./content");
+  const site = (await getSetting<{ domain?: string }>("site")) ?? {};
   return {
     latitude: loc.latitude,
     longitude: loc.longitude,
     address: loc.address,
     googleMapsKey: loc.google_maps_key,
+    siteDomain: (site.domain ?? "").trim(),
     building: {
       libraryId: loc.building_library_id,
       master: loc.building_master_key || null,

@@ -1,6 +1,6 @@
 import { getEnv } from "./env";
 import type { Locale, LocaleMap } from "./i18n";
-import { emptyLocaleMap } from "./i18n";
+import { emptyLocaleMap, LOCALES } from "./i18n";
 import { buildPriceListPdf } from "./services-pdf";
 import {
   SERVICES_CONTENT_KEY,
@@ -10,6 +10,7 @@ import {
   pagePathForSlug,
   parseJsonArray,
   priceToText,
+  servicesPdfKeyForLocale,
   slugifyService,
   type ServiceCategory,
   type ServicePage,
@@ -20,6 +21,23 @@ import {
   type ServiceSubcategory,
   type ServicesCatalogDocument,
 } from "./services-shared";
+
+function pickLocaleText(map: LocaleMap | undefined, locale: Locale): string {
+  if (!map) return "";
+  return (map[locale] || map.ro || map.en || map.bg || "").trim();
+}
+
+const PDF_TITLES: Record<Locale, string> = {
+  ro: "Ark Dental — Lista de preturi",
+  en: "Ark Dental — Price list",
+  bg: "Ark Dental — Ценова листа",
+};
+
+const PDF_GENERATED: Record<Locale, string> = {
+  ro: "Generat",
+  en: "Generated",
+  bg: "Генерирано",
+};
 
 export * from "./services-shared";
 
@@ -525,6 +543,11 @@ export async function buildCatalogDocument(): Promise<ServicesCatalogDocument> {
       enabled: s.enabled,
     })),
     pdfKey: SERVICES_PDF_KEY,
+    pdfKeys: {
+      ro: servicesPdfKeyForLocale("ro"),
+      en: servicesPdfKeyForLocale("en"),
+      bg: servicesPdfKeyForLocale("bg"),
+    },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -571,24 +594,24 @@ export async function publishAllServicePages(): Promise<void> {
   }
 }
 
-export async function generateAndStorePriceListPdf(): Promise<{ key: string; bytes: number }> {
-  const { CONTENT } = getEnv();
-  const [categories, subcategories, services] = await Promise.all([
-    listCategories(),
-    listSubcategories(),
-    listServices(),
-  ]);
+function buildPriceListLinesForLocale(
+  locale: Locale,
+  categories: ServiceCategory[],
+  subcategories: ServiceSubcategory[],
+  services: ServiceRow[],
+): Array<{ text: string; size: number; bold?: boolean }> {
   const enabledCats = categories.filter((c) => c.enabled);
   const enabledServices = services.filter((s) => s.enabled);
+  const date = new Date().toISOString().slice(0, 10);
   const lines: Array<{ text: string; size: number; bold?: boolean }> = [
-    { text: "Ark Dental — Lista de preturi / Price list", size: 16, bold: true },
-    { text: `Generat: ${new Date().toISOString().slice(0, 10)}`, size: 10 },
+    { text: PDF_TITLES[locale], size: 16, bold: true },
+    { text: `${PDF_GENERATED[locale]}: ${date}`, size: 10 },
     { text: "", size: 8 },
   ];
 
   for (const cat of enabledCats) {
     lines.push({
-      text: cat.name.ro || cat.name.en || cat.name.bg,
+      text: pickLocaleText(cat.name, locale),
       size: 13,
       bold: true,
     });
@@ -600,38 +623,88 @@ export async function generateAndStorePriceListPdf(): Promise<{ key: string; byt
     );
     for (const svc of direct) {
       lines.push({
-        text: `  ${svc.title.ro || svc.title.en} — ${svc.price_text} ${svc.currency}`,
+        text: `  ${pickLocaleText(svc.title, locale)} — ${svc.price_text} ${svc.currency}`,
         size: 10,
       });
     }
     for (const sub of subs) {
       lines.push({
-        text: `  ${sub.name.ro || sub.name.en}`,
+        text: `  ${pickLocaleText(sub.name, locale)}`,
         size: 11,
         bold: true,
       });
-      const under = enabledServices.filter((s) => s.subcategory_id === sub.id);
+      const under = enabledServices.filter(
+        (s) => s.category_id === cat.id && s.subcategory_id === sub.id,
+      );
       for (const svc of under) {
         lines.push({
-          text: `    ${svc.title.ro || svc.title.en} — ${svc.price_text} ${svc.currency}`,
+          text: `    ${pickLocaleText(svc.title, locale)} — ${svc.price_text} ${svc.currency}`,
           size: 10,
         });
       }
     }
     lines.push({ text: "", size: 8 });
   }
-
-  const bytes = buildPriceListPdf(lines);
-  await CONTENT.put(SERVICES_PDF_KEY, bytes, {
-    httpMetadata: { contentType: "application/pdf" },
-  });
-  await publishServicesCatalog();
-  return { key: SERVICES_PDF_KEY, bytes: bytes.byteLength };
+  return lines;
 }
 
-export async function getPriceListPdf(): Promise<ArrayBuffer | null> {
+export async function generateAndStorePriceListPdf(): Promise<{
+  key: string;
+  bytes: number;
+  keys: Record<Locale, string>;
+  bytesByLocale: Record<Locale, number>;
+}> {
   const { CONTENT } = getEnv();
-  const obj = await CONTENT.get(SERVICES_PDF_KEY);
+  const [categories, subcategories, services] = await Promise.all([
+    listCategories(),
+    listSubcategories(),
+    listServices(),
+  ]);
+
+  const keys = {} as Record<Locale, string>;
+  const bytesByLocale = {} as Record<Locale, number>;
+  let primaryBytes = 0;
+
+  for (const locale of LOCALES) {
+    const lines = buildPriceListLinesForLocale(
+      locale,
+      categories,
+      subcategories,
+      services,
+    );
+    const bytes = buildPriceListPdf(lines);
+    const key = servicesPdfKeyForLocale(locale);
+    await CONTENT.put(key, bytes, {
+      httpMetadata: { contentType: "application/pdf" },
+    });
+    keys[locale] = key;
+    bytesByLocale[locale] = bytes.byteLength;
+    if (locale === "ro") {
+      primaryBytes = bytes.byteLength;
+      await CONTENT.put(SERVICES_PDF_KEY, bytes, {
+        httpMetadata: { contentType: "application/pdf" },
+      });
+    }
+  }
+
+  await publishServicesCatalog();
+  return {
+    key: SERVICES_PDF_KEY,
+    bytes: primaryBytes,
+    keys,
+    bytesByLocale,
+  };
+}
+
+export async function getPriceListPdf(
+  locale: Locale = "ro",
+): Promise<ArrayBuffer | null> {
+  const { CONTENT } = getEnv();
+  const key = servicesPdfKeyForLocale(locale);
+  let obj = await CONTENT.get(key);
+  if (!obj && locale === "ro") {
+    obj = await CONTENT.get(SERVICES_PDF_KEY);
+  }
   if (!obj) return null;
   return obj.arrayBuffer();
 }

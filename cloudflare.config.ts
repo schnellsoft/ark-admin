@@ -28,6 +28,15 @@ export default defineConfig({
       VAPID_PUBLIC_KEY: bindings.secret(),
       VAPID_PRIVATE_KEY: bindings.secret(),
       VAPID_SUBJECT: bindings.text("mailto:admin@ark.local"),
+      /**
+       * Set after deploy with:
+       *   npx wrangler secret put SITE_DEPLOY_HOOK_URL
+       *   npx wrangler secret put SITE_REBUILD_GITHUB_TOKEN
+       * Declared here so vinext/wrangler typegen know about them.
+       */
+      SITE_DEPLOY_HOOK_URL: bindings.secret(),
+      SITE_REBUILD_GITHUB_TOKEN: bindings.secret(),
+      SITE_REBUILD_GITHUB_REPO: bindings.text("schnellsoft/ark-site"),
     },
     exports: {
       ChatRoom: exports.durableObject({ storage: "sqlite" }),

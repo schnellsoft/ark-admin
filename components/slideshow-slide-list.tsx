@@ -13,14 +13,19 @@ import type { LibraryCategory, LibraryImage, LibrarySettings } from "@/lib/libra
 import { importSlideFromLibrary, uploadSlideMedia } from "@/lib/slideshow-media-client";
 import {
   slideLayerFlags,
-  slideThumbKey,
   type SlideshowSettings,
   type SlideshowSlide,
 } from "@/lib/slideshow-shared";
+import {
+  DEFAULT_SLIDE_SCOPE,
+  slideEditHref,
+  slideFileApi,
+  slideItemApi,
+  slideReorderApi,
+  slideThumbKeyForScope,
+  type SlideApiScope,
+} from "@/lib/slide-api-scope";
 
-function slideshowFileUrl(key: string) {
-  return `/api/site/slideshow/file?key=${encodeURIComponent(key)}`;
-}
 
 function libraryFileUrl(key: string) {
   return `/api/site/media/file?key=${encodeURIComponent(key)}`;
@@ -32,12 +37,18 @@ export function SlideshowSlideList({
   libraryAssets,
   libraryCategories,
   settings,
+  scope = DEFAULT_SLIDE_SCOPE,
+  title,
+  subtitle,
 }: {
   initialSlides: SlideshowSlide[];
   librarySettings: LibrarySettings;
   libraryAssets: LibraryImage[];
   libraryCategories: LibraryCategory[];
   settings: SlideshowSettings;
+  scope?: SlideApiScope;
+  title?: string;
+  subtitle?: string;
 }) {
   const { t } = useI18n();
   const [slides, setSlides] = useState(initialSlides);
@@ -49,7 +60,7 @@ export function SlideshowSlideList({
 
   const persistOrder = async (next: SlideshowSlide[]) => {
     setSlides(next);
-    await fetch("/api/site/slideshow/reorder", {
+    await fetch(slideReorderApi(scope), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: next.map((slide) => slide.id) }),
@@ -67,7 +78,7 @@ export function SlideshowSlideList({
   const toggle = async (slide: SlideshowSlide, enabled: boolean) => {
     const next = slides.map((item) => (item.id === slide.id ? { ...item, enabled } : item));
     setSlides(next);
-    await fetch(`/api/site/slideshow/${slide.id}`, {
+    await fetch(slideItemApi(slide.id, scope), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
@@ -77,7 +88,7 @@ export function SlideshowSlideList({
   const remove = async (slide: SlideshowSlide) => {
     const label = slide.title || slide.alt || slide.id;
     if (!window.confirm(`${t("slideshow.deleteConfirm")} “${label}”?`)) return;
-    await fetch(`/api/site/slideshow/${slide.id}`, { method: "DELETE" });
+    await fetch(slideItemApi(slide.id, scope), { method: "DELETE" });
     setSlides(slides.filter((item) => item.id !== slide.id));
     setStatus(t("slideshow.deleted"));
   };
@@ -93,9 +104,10 @@ export function SlideshowSlideList({
         librarySettings,
         desktopRatio: settings.ratio,
         output: settings.output,
+        scope,
       });
       setStatus(t("slideshow.uploadDone"));
-      router.push(`/site/slideshow/${slide.id}`);
+      router.push(slideEditHref(slide.id, scope));
     } catch (err) {
       setStatus(err instanceof Error ? err.message : t("slideshow.saveFailed"));
     } finally {
@@ -115,10 +127,11 @@ export function SlideshowSlideList({
         alt: asset.alt,
         desktopRatio: settings.ratio,
         output: settings.output,
+        scope,
       });
       setPickerOpen(false);
       setStatus(t("slideshow.uploadDone"));
-      router.push(`/site/slideshow/${slide.id}`);
+      router.push(slideEditHref(slide.id, scope));
     } catch (err) {
       setStatus(err instanceof Error ? err.message : t("slideshow.saveFailed"));
     } finally {
@@ -131,9 +144,11 @@ export function SlideshowSlideList({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl text-teal-200">
-            {t("slideshow.slidesTitle")}
+            {title || t("slideshow.slidesTitle")}
           </h1>
-          <p className="mt-1 text-sm text-slate-400">{t("slideshow.slidesSubtitle")}</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {subtitle || t("slideshow.slidesSubtitle")}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input
@@ -167,7 +182,7 @@ export function SlideshowSlideList({
 
       <div className="grid gap-4">
         {slides.map((slide, index) => {
-          const thumb = slideThumbKey(slide);
+          const thumb = slideThumbKeyForScope(slide, scope);
           const libraryAsset = slide.library_asset_id
             ? libraryAssets.find((a) => a.id === slide.library_asset_id)
             : null;
@@ -175,14 +190,14 @@ export function SlideshowSlideList({
             ? libraryAsset.webp_key || libraryAsset.master_key
             : null;
           const imageSrc = thumb
-            ? slideshowFileUrl(thumb)
+            ? slideFileApi(thumb, scope)
             : libraryPreviewKey
               ? libraryFileUrl(libraryPreviewKey)
               : null;
           const videoSrc =
             slide.media_kind === "video"
               ? thumb
-                ? slideshowFileUrl(thumb)
+                ? slideFileApi(thumb, scope)
                 : libraryAsset
                   ? libraryFileUrl(libraryAsset.master_key)
                   : null
@@ -291,7 +306,7 @@ export function SlideshowSlideList({
                     <ArrowDown className="size-4" />
                   </Button>
                   <Link
-                    href={`/site/slideshow/${slide.id}`}
+                    href={slideEditHref(slide.id, scope)}
                     className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"
                     aria-label={`Edit ${slide.title || slide.id}`}
                   >

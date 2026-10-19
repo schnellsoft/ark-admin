@@ -12,7 +12,7 @@ type UserRow = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "staff" | "patient";
+  role: "admin" | "staff" | "patient" | "doctor";
   locale: string;
   lat: number | null;
   lng: number | null;
@@ -28,6 +28,7 @@ export function UsersManager({
 }) {
   const [rows, setRows] = useState(initial);
   const [status, setStatus] = useState("");
+  const [formKey, setFormKey] = useState(0);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
@@ -136,7 +137,8 @@ export function UsersManager({
     }
     setRows((prev) => [data.user!, ...prev]);
     setStatus("User created");
-    e.currentTarget.reset();
+    // Remount clears fields (form.reset() alone loses to browser autofill).
+    setFormKey((k) => k + 1);
   }
 
   async function saveEdit(e: React.FormEvent) {
@@ -186,31 +188,40 @@ export function UsersManager({
   return (
     <div className="space-y-6">
       <form
+        key={formKey}
         onSubmit={createUser}
+        autoComplete="off"
         className="grid gap-3 rounded-xl border border-slate-700 bg-slate-950/40 p-4 md:grid-cols-5"
       >
         <div className="space-y-1">
           <Label>Name</Label>
-          <Input name="name" required />
+          <Input name="name" required autoComplete="off" />
         </div>
         <div className="space-y-1">
           <Label>Email</Label>
-          <Input name="email" type="email" required />
+          <Input name="email" type="email" required autoComplete="off" />
         </div>
         <div className="space-y-1">
           <Label>Role</Label>
           <select
             name="role"
+            defaultValue="patient"
             className="flex h-10 w-full rounded-md border border-slate-600 bg-slate-900/80 px-3 text-sm text-slate-100"
           >
             <option value="patient">patient</option>
+            <option value="doctor">doctor</option>
             <option value="staff">staff</option>
             <option value="admin">admin</option>
           </select>
         </div>
         <div className="space-y-1">
           <Label>Password</Label>
-          <Input name="password" type="password" placeholder="optional for patients" />
+          <Input
+            name="password"
+            type="password"
+            placeholder="optional for patients"
+            autoComplete="new-password"
+          />
         </div>
         <div className="flex items-end">
           <Button type="submit" className="w-full">
@@ -253,6 +264,7 @@ export function UsersManager({
                   }
                 >
                   <option value="patient">patient</option>
+                  <option value="doctor">doctor</option>
                   <option value="staff">staff</option>
                   <option value="admin">admin</option>
                 </select>
